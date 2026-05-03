@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fraidycat Clone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F5F2EB;
+  --surface: #FDFCF9;
+  --border: #E2DDD4;
+  --border-strong: #C8C3B8;
+  --text: #1C1A16;
+  --text-muted: #7A7469;
+  --text-faint: #ABA69E;
+  --accent: #2D5016;
+  --accent-light: #E8F0E0;
+  --accent-mid: #5A8C2E;
+  --danger: #8B2315;
+  --danger-light: #F5EAE8;
+  --tag-bg: #EAE6DD;
+  --tag-text: #5A5549;
+  --pill-rt: #1A3A6B;
+  --pill-daily: #2D5016;
+  --pill-weekly: #5A3A00;
+  --pill-monthly: #4A1A6B;
+  --pill-yearly: #5A1A1A;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#151310;--surface:#1E1C18;--border:#2E2B25;--border-strong:#3E3B34;
+    --text:#EDE8DF;--text-muted:#8A857C;--text-faint:#5A5650;
+    --accent:#7CB84A;--accent-light:#1E2A14;--accent-mid:#7CB84A;
+    --danger:#E06050;--danger-light:#2A1510;
+    --tag-bg:#252219;--tag-text:#9A9488;
+    --pill-rt:#4A7ADB;--pill-daily:#7CB84A;--pill-weekly:#C89A30;
+    --pill-monthly:#A870E0;--pill-yearly:#E07060;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif}
+body{display:flex;flex-direction:column;min-height:100vh}
+
+/* Header */
+.header{
+  position:sticky;top:0;z-index:50;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 1.5rem;
+  display:flex;align-items:center;gap:1rem;height:52px;
+}
+.logo{
+  font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:-0.02em;
+  color:var(--accent);flex-shrink:0;
+}
+.logo span{color:var(--text-muted);font-style:italic}
+.tags-scroll{
+  flex:1;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;align-items:center;
+}
+.tags-scroll::-webkit-scrollbar{display:none}
+.tag-btn{
+  white-space:nowrap;font-size:12px;font-family:'DM Mono',monospace;
+  padding:3px 10px;border-radius:99px;border:1px solid var(--border);
+  background:transparent;color:var(--text-muted);cursor:pointer;
+  transition:all 0.15s;flex-shrink:0;
+}
+.tag-btn:hover{border-color:var(--border-strong);color:var(--text)}
+.tag-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.hdr-actions{display:flex;gap:6px;flex-shrink:0}
+.hdr-btn{
+  font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--text-muted);
+  font-family:'DM Sans',sans-serif;transition:all 0.15s;white-space:nowrap;
+}
+.hdr-btn:hover{background:var(--tag-bg);color:var(--text)}
+.hdr-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.hdr-btn.primary:hover{opacity:0.88}
+
+/* Layout */
+.layout{display:flex;flex:1;min-height:0}
+.sidebar{
+  width:220px;flex-shrink:0;border-right:1px solid var(--border);
+  padding:1.25rem 0;overflow-y:auto;
+  background:var(--surface);
+}
+.sb-section{font-size:10px;font-family:'DM Mono',monospace;font-weight:500;
+  letter-spacing:0.1em;color:var(--text-faint);
+  padding:0 1.25rem;margin:1rem 0 0.4rem;text-transform:uppercase}
+.sb-btn{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:6px 1.25rem;background:none;border:none;
+  font-size:13px;color:var(--text-muted);cursor:pointer;text-align:left;
+  transition:all 0.12s;border-left:2px solid transparent;
+}
+.sb-btn:hover{background:var(--tag-bg);color:var(--text)}
+.sb-btn.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent-light)}
+.sb-dot{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+  background:var(--border-strong);
+}
+.sb-count{margin-left:auto;font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint)}
+
+/* Main */
+.main{flex:1;overflow-y:auto;padding:1.5rem}
+
+/* Group */
+.group-label{
+  font-size:10px;font-family:'DM Mono',monospace;font-weight:500;
+  letter-spacing:0.1em;color:var(--text-faint);text-transform:uppercase;
+  margin:1.5rem 0 0.5rem;display:flex;align-items:center;gap:8px;
+}
+.group-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.group-label:first-child{margin-top:0}
+
+/* Follow card */
+.follow-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;margin-bottom:3px;overflow:hidden;
+  transition:border-color 0.15s;
+}
+.follow-card:hover{border-color:var(--border-strong)}
+.follow-card.expanded{border-color:var(--border-strong)}
+.fc-row{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;
+  cursor:pointer;user-select:none;
+}
+.fc-avatar{
+  width:34px;height:34px;border-radius:7px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:500;flex-shrink:0;
+  font-family:'DM Mono',monospace;
+}
+.fc-body{flex:1;min-width:0}
+.fc-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fc-name{font-size:13px;font-weight:500}
+.fc-platform{
+  font-size:10px;font-family:'DM Mono',monospace;
+  padding:1px 6px;border-radius:4px;
+  background:var(--tag-bg);color:var(--tag-text);flex-shrink:0;
+}
+.fc-tag{
+  font-size:10px;padding:1px 6px;border-radius:99px;
+  background:var(--accent-light);color:var(--accent-mid);flex-shrink:0;
+}
+.fc-snippet{
+  font-size:12px;color:var(--text-muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-style:italic;
+}
+.fc-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.freq-pill{
+  font-size:10px;font-family:'DM Mono',monospace;
+  padding:2px 7px;border-radius:99px;white-space:nowrap;
+}
+.fp-rt{background:#1A3A6B22;color:var(--pill-rt)}
+.fp-daily{background:#2D501622;color:var(--pill-daily)}
+.fp-weekly{background:#5A3A0022;color:var(--pill-weekly)}
+.fp-monthly{background:#4A1A6B22;color:var(--pill-monthly)}
+.fp-yearly{background:#5A1A1A22;color:var(--pill-yearly)}
+.fc-ago{font-size:11px;color:var(--text-faint);font-family:'DM Mono',monospace;min-width:48px;text-align:right}
+.fc-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fc-del{
+  background:none;border:none;cursor:pointer;padding:3px 6px;
+  border-radius:4px;color:var(--text-faint);font-size:14px;
+  transition:all 0.12s;line-height:1;
+}
+.fc-del:hover{background:var(--danger-light);color:var(--danger)}
+
+/* Detail */
+.fc-detail{
+  border-top:1px solid var(--border);padding:8px 14px 12px;
+  display:none;
+}
+.follow-card.expanded .fc-detail{display:block}
+.detail-posts{list-style:none;display:flex;flex-direction:column;gap:5px}
+.dp-item{display:flex;align-items:baseline;gap:8px}
+.dp-dot{width:4px;height:4px;border-radius:50%;background:var(--border-strong);flex-shrink:0;margin-top:6px}
+.dp-link{
+  font-size:12px;color:var(--text);text-decoration:none;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;
+}
+.dp-link:hover{color:var(--accent);text-decoration:underline}
+.dp-date{font-size:10px;font-family:'DM Mono',monospace;color:var(--text-faint);flex-shrink:0}
+.dp-dur{font-size:10px;font-family:'DM Mono',monospace;color:var(--text-faint);
+  background:var(--tag-bg);padding:1px 5px;border-radius:4px;flex-shrink:0}
+.dp-err{font-size:12px;color:var(--danger);font-style:italic}
+.dp-empty{font-size:12px;color:var(--text-faint);font-style:italic}
+.dp-refresh{
+  font-size:11px;color:var(--accent-mid);background:none;border:none;
+  cursor:pointer;text-decoration:underline;padding:0;margin-top:4px;
+  font-family:'DM Sans',sans-serif;
+}
+
+/* Empty state */
+.empty{
+  text-align:center;padding:5rem 2rem;
+  color:var(--text-muted);
+}
+.empty h2{font-family:'DM Serif Display',serif;font-size:24px;margin-bottom:8px;color:var(--text)}
+.empty p{font-size:14px;line-height:1.6}
+
+/* Modal */
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;z-index:200;
+  animation:fadeIn 0.15s ease;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:12px;padding:1.75rem;width:400px;max-width:95vw;
+  animation:slideUp 0.2s ease;
+}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.modal h2{
+  font-family:'DM Serif Display',serif;font-size:20px;margin-bottom:1.25rem;
+}
+.form-row{margin-bottom:12px}
+.form-label{
+  font-size:11px;font-family:'DM Mono',monospace;font-weight:500;
+  letter-spacing:0.06em;color:var(--text-muted);
+  display:block;margin-bottom:5px;text-transform:uppercase;
+}
+.form-input,.form-select{
+  width:100%;padding:8px 10px;
+  border:1px solid var(--border-strong);border-radius:6px;
+  background:var(--bg);color:var(--text);
+  font-size:13px;font-family:'DM Sans',sans-serif;
+  transition:border-color 0.15s;outline:none;
+}
+.form-input:focus,.form-select:focus{border-color:var(--accent)}
+.form-hint{font-size:11px;color:var(--text-faint);margin-top:3px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+.btn-cancel{
+  padding:7px 16px;border:1px solid var(--border-strong);border-radius:6px;
+  background:transparent;color:var(--text-muted);cursor:pointer;font-size:13px;
+  font-family:'DM Sans',sans-serif;transition:all 0.12s;
+}
+.btn-cancel:hover{background:var(--tag-bg);color:var(--text)}
+.btn-ok{
+  padding:7px 16px;border:none;border-radius:6px;
+  background:var(--accent);color:#fff;cursor:pointer;font-size:13px;
+  font-family:'DM Sans',sans-serif;transition:opacity 0.12s;
+}
+.btn-ok:hover{opacity:0.88}
+.color-row{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.color-swatch{
+  width:24px;height:24px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;transition:all 0.12s;
+}
+.color-swatch.selected{border-color:var(--text);transform:scale(1.15)}
+
+/* Status bar */
+.statusbar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding:5px 1.5rem;font-size:11px;font-family:'DM Mono',monospace;
+  color:var(--text-faint);display:flex;align-items:center;gap:12px;z-index:50;
+}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint)}
+.status-dot.ok{background:#5A8C2E}
+.status-dot.loading{background:#C89A30;animation:pulse 1s infinite}
+.status-dot.err{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* Timeline view */
+.tl-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;margin-bottom:3px;
+  display:flex;align-items:center;gap:10px;
+  padding:9px 14px;transition:border-color 0.15s;
+}
+.tl-card:hover{border-color:var(--border-strong)}
+.tl-avatar{
+  width:28px;height:28px;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:500;flex-shrink:0;
+  font-family:'DM Mono',monospace;
+}
+.tl-body{flex:1;min-width:0}
+.tl-channel{font-size:11px;color:var(--text-muted);margin-bottom:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tl-title{font-size:13px;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tl-title a{color:var(--text);text-decoration:none}
+.tl-title a:hover{color:var(--accent);text-decoration:underline}
+.tl-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.tl-dur{font-size:10px;font-family:'DM Mono',monospace;
+  background:var(--tag-bg);color:var(--tag-text);
+  padding:2px 6px;border-radius:4px;}
+.tl-ago{font-size:11px;color:var(--text-faint);font-family:'DM Mono',monospace;min-width:52px;text-align:right}
+.tl-day-label{
+  font-size:10px;font-family:'DM Mono',monospace;font-weight:500;
+  letter-spacing:0.1em;color:var(--text-faint);text-transform:uppercase;
+  padding:8px 12px 4px;margin-top:8px;display:flex;align-items:center;gap:8px;
+}
+.tl-day-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.tl-day-label:first-child{margin-top:0}
+
+/* Import modal */
+.import-textarea{
+  width:100%;height:160px;padding:8px 10px;
+  border:1px solid var(--border-strong);border-radius:6px;
+  background:var(--bg);color:var(--text);
+  font-size:12px;font-family:'DM Mono',monospace;line-height:1.6;
+  resize:vertical;outline:none;transition:border-color 0.15s;
+}
+.import-textarea:focus{border-color:var(--accent)}
+.import-preview{
+  margin-top:10px;max-height:180px;overflow-y:auto;
+  border:1px solid var(--border);border-radius:6px;
+  background:var(--bg);
+}
+.ip-row{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;
+}
+.ip-row:last-child{border-bottom:none}
+.ip-tag{
+  font-size:10px;padding:1px 7px;border-radius:99px;
+  background:var(--accent-light);color:var(--accent-mid);flex-shrink:0;
+  font-family:'DM Mono',monospace;
+}
+.ip-name{font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ip-url{font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
+.ip-dup{font-size:10px;color:var(--text-faint);background:var(--tag-bg);
+  padding:1px 6px;border-radius:4px;flex-shrink:0}
+.ip-empty{padding:1rem;text-align:center;color:var(--text-faint);font-size:12px}
+.import-summary{font-size:12px;color:var(--text-muted);margin-top:6px}
+.import-summary b{color:var(--accent-mid)}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-strong)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">frady<span>cat</span></div>
+  <div class="tags-scroll" id="tagsScroll"></div>
+  <div class="hdr-actions">
+    <button class="hdr-btn" onclick="refreshAll()">↻ 更新</button>
+    <button class="hdr-btn" id="sortBtn" onclick="toggleSort()">⇅ 最新順</button>
+    <button class="hdr-btn" onclick="openImportModal()">↑ 一括インポート</button>
+    <button class="hdr-btn primary" onclick="openModal()">+ 追加</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main" id="main" style="padding-bottom:2.5rem"></div>
+</div>
+
+<div class="statusbar">
+  <div class="status-dot" id="statusDot"></div>
+  <span id="statusText">準備完了</span>
+</div>
+
+<div id="modalContainer"></div>
+
+<script>
+/* ── CORS proxy options (tried in order) ── */
+const PROXIES = [
+  async url => {
+    const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    if(!r.ok) throw new Error(`allorigins HTTP ${r.status}`);
+    const j = await r.json();
+    const t = j.contents || '';
+    if(!t) throw new Error('allorigins: empty');
+    return t;
+  },
+  async url => {
+    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    if(!r.ok) throw new Error(`corsproxy HTTP ${r.status}`);
+    return await r.text();
+  },
+  async url => {
+    const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    if(!r.ok) throw new Error(`rss2json HTTP ${r.status}`);
+    const j = await r.json();
+    if(j.status !== 'ok') throw new Error('rss2json: ' + (j.message||'error'));
+    return {rss2json: j};
+  },
+  async url => {
+    const r = await fetch(`https://feedproxy.google.com/${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    if(!r.ok) throw new Error(`feedproxy HTTP ${r.status}`);
+    return await r.text();
+  },
+];
+
+const COLORS = [
+  {bg:'#E8F5E9',fg:'#1B5E20',dark_bg:'#1B5E20',dark_fg:'#A5D6A7'},
+  {bg:'#E3F2FD',fg:'#0D47A1',dark_bg:'#0D47A1',dark_fg:'#90CAF9'},
+  {bg:'#FFF3E0',fg:'#E65100',dark_bg:'#BF360C',dark_fg:'#FFCC80'},
+  {bg:'#F3E5F5',fg:'#4A148C',dark_bg:'#4A148C',dark_fg:'#CE93D8'},
+  {bg:'#FCE4EC',fg:'#880E4F',dark_bg:'#880E4F',dark_fg:'#F48FB1'},
+  {bg:'#E0F2F1',fg:'#004D40',dark_bg:'#004D40',dark_fg:'#80CBC4'},
+  {bg:'#FFF8E1',fg:'#F57F17',dark_bg:'#E65100',dark_fg:'#FFE082'},
+  {bg:'#EFEBE9',fg:'#3E2723',dark_bg:'#3E2723',dark_fg:'#BCAAA4'},
+];
+
+const FREQS = ['リアルタイム','毎日','毎週','毎月','毎年'];
+const FREQ_PILL = {
+  'リアルタイム':'fp-rt','毎日':'fp-daily','毎週':'fp-weekly',
+  '毎月':'fp-monthly','毎年':'fp-yearly'
+};
+const FREQ_INTERVAL = {
+  'リアルタイム':5*60*1000,'毎日':24*60*60*1000,'毎週':7*24*60*60*1000,
+  '毎月':30*24*60*60*1000,'毎年':365*24*60*60*1000
+};
+
+/* ── State ── */
+let follows = [];
+let activeTag = 'すべて';
+let activeFreq = null;
+let expanded = null;
+let showModal = false;
+let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx:0};
+let sortMode = 'freq'; // 'freq' | 'latest'
+let loadingCount = 0;
+
+/* ── Storage ── */
+function save(){
+  try{localStorage.setItem('fraidycat_follows', JSON.stringify(follows))}catch(e){}
+}
+function load(){
+  try{
+    const d = localStorage.getItem('fraidycat_follows');
+    if(d) follows = JSON.parse(d);
+  }catch(e){}
+}
+
+/* ── RSS Fetch ── */
+async function fetchRSSRaw(url){
+  let lastErr;
+  for(let i=0; i<PROXIES.length; i++){
+    try{
+      const result = await PROXIES[i](url);
+      return result; // string or {rss2json:...}
+    }catch(e){
+      lastErr = e;
+    }
+  }
+  throw new Error(lastErr?.message || '全プロキシ失敗');
+}
+
+function parseFeedTitle(xmlText){
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'application/xml');
+  const isAtom = !!doc.querySelector('feed');
+  if(isAtom){
+    return doc.querySelector('feed > title')?.textContent?.trim() || '';
+  } else {
+    return doc.querySelector('channel > title')?.textContent?.trim() || '';
+  }
+}
+
+/* XMLノードから名前空間を無視してタグ名で最初の要素を取る */
+function getEl(node, ...names){
+  for(const name of names){
+    // ローカル名だけで検索（名前空間を無視）
+    const found = node.getElementsByTagNameNS('*', name)[0]
+                || node.getElementsByTagName(name)[0];
+    if(found) return found;
+  }
+  return null;
+}
+
+function parseRSS(raw){
+  // rss2json format
+  if(raw && raw.rss2json){
+    const {feed, items} = raw.rss2json;
+    return {
+      feedTitle: feed?.title || '',
+      posts: (items||[]).slice(0,10).map(it=>({
+        title: it.title || '(無題)',
+        link: it.link || '#',
+        date: it.pubDate ? new Date(it.pubDate) : null,
+        duration: null,
+      }))
+    };
+  }
+  // XML string
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(raw, 'application/xml');
+  const isAtom = !!(doc.getElementsByTagNameNS('*','feed')[0] || doc.getElementsByTagName('feed')[0]);
+  const posts = [];
+  let feedTitle = '';
+
+  if(isAtom){
+    feedTitle = getEl(doc,'feed')?.getElementsByTagNameNS('*','title')[0]?.textContent?.trim()
+             || doc.getElementsByTagName('title')[0]?.textContent?.trim() || '';
+
+    const entries = [...(doc.getElementsByTagNameNS('*','entry').length
+      ? doc.getElementsByTagNameNS('*','entry')
+      : doc.getElementsByTagName('entry'))];
+
+    entries.forEach(e=>{
+      const title = getEl(e,'title')?.textContent?.trim() || '(無題)';
+
+      // link: <link rel="alternate" href="..."> or <link href="...">
+      const linkEls = [...e.getElementsByTagName('link'), ...e.getElementsByTagNameNS('*','link')];
+      const linkEl = linkEls.find(l=>l.getAttribute('rel')==='alternate') || linkEls[0];
+      const link = linkEl?.getAttribute('href') || linkEl?.textContent?.trim() || '#';
+
+      // 投稿日: <published> を優先、なければ <updated>
+      const publishedEl = getEl(e,'published');
+      const updatedEl   = getEl(e,'updated');
+      const dateStr = (publishedEl || updatedEl)?.textContent?.trim() || '';
+
+      // YouTube duration: <yt:duration seconds="N"> -> seconds属性
+      // またはテキストコンテンツ
+      let duration = null;
+      const durEl = getEl(e,'duration');
+      if(durEl){
+        const secAttr = durEl.getAttribute('seconds');
+        if(secAttr){
+          duration = parseInt(secAttr);
+        } else {
+          // itunes style: "H:MM:SS" / "M:SS"
+          const txt = durEl.textContent?.trim();
+          if(txt && txt.includes(':')){
+            const parts = txt.split(':').map(Number);
+            duration = parts.length===3 ? parts[0]*3600+parts[1]*60+parts[2] : parts[0]*60+(parts[1]||0);
+          } else if(txt){
+            duration = parseInt(txt) || null;
+          }
+        }
+      }
+
+      posts.push({title, link, date: dateStr ? new Date(dateStr) : null, duration});
+    });
+  } else {
+    feedTitle = doc.querySelector('channel > title')?.textContent?.trim()
+             || getEl(doc,'title')?.textContent?.trim() || '';
+
+    const items = [...doc.getElementsByTagName('item')];
+    items.forEach(e=>{
+      const title = getEl(e,'title')?.textContent?.trim() || '(無題)';
+      const link = getEl(e,'link')?.textContent?.trim()
+                || getEl(e,'guid')?.textContent?.trim() || '#';
+      const dateStr = (getEl(e,'pubDate') || getEl(e,'date'))?.textContent?.trim() || '';
+
+      const itunesDur = getEl(e,'duration')?.textContent?.trim() || null;
+      let duration = null;
+      if(itunesDur){
+        if(itunesDur.includes(':')){
+          const parts = itunesDur.split(':').map(Number);
+          duration = parts.length===3 ? parts[0]*3600+parts[1]*60+parts[2] : parts[0]*60+(parts[1]||0);
+        } else {
+          duration = parseInt(itunesDur) || null;
+        }
+      }
+      posts.push({title, link, date: dateStr ? new Date(dateStr) : null, duration});
+    });
+  }
+
+  posts.sort((a,b)=> (b.date||0) - (a.date||0));
+  return {feedTitle, posts: posts.slice(0,10)};
+}
+
+/* ── Auto-detect feed name from URL ── */
+let autoFetchTimer = null;
+async function autoFetchTitle(url){
+  if(!url || !url.startsWith('http')) return;
+  const nameEl = document.getElementById('f-name');
+  const statusEl = document.getElementById('f-url-status');
+  if(!nameEl || !statusEl) return;
+  if(nameEl.value.trim()) return; // don't overwrite user input
+
+  statusEl.textContent = '取得中...';
+  statusEl.style.color = 'var(--text-faint)';
+  try{
+    const raw = await fetchRSSRaw(url);
+    const {feedTitle} = parseRSS(raw);
+    if(feedTitle && nameEl && !nameEl.value.trim()){
+      nameEl.value = feedTitle;
+      formData.name = feedTitle;
+      statusEl.textContent = '✓ フィード名を自動取得しました';
+      statusEl.style.color = 'var(--accent-mid)';
+    } else {
+      statusEl.textContent = '';
+    }
+  }catch(e){
+    statusEl.textContent = '名前を手動で入力してください';
+    statusEl.style.color = 'var(--text-faint)';
+  }
+}
+
+function relativeTime(d){
+  if(!d || isNaN(d)) return '';
+  const diff = Date.now() - d.getTime();
+  const m = Math.floor(diff/60000);
+  if(m < 1) return 'たった今';
+  if(m < 60) return `${m}分前`;
+  const h = Math.floor(m/60);
+  if(h < 24) return `${h}時間前`;
+  const dy = Math.floor(h/24);
+  if(dy < 7) return `${dy}日前`;
+  if(dy < 30) return `${Math.floor(dy/7)}週間前`;
+  if(dy < 365) return `${Math.floor(dy/30)}ヶ月前`;
+  return `${Math.floor(dy/365)}年前`;
+}
+
+function setStatus(state, msg){
+  statusState = state;
+  document.getElementById('statusDot').className = 'status-dot' + (state==='loading'?' loading':state==='ok'?' ok':state==='err'?' err':'');
+  document.getElementById('statusText').textContent = msg;
+}
+
+async function fetchFollow(f){
+  f.loading = true;
+  loadingCount++;
+  if(loadingCount===1) setStatus('loading', '更新中...');
+  render();
+
+  try{
+    const raw = await fetchRSSRaw(f.url);
+    const {feedTitle, posts} = parseRSS(raw);
+    f.posts = posts;
+    f.lastFetched = Date.now();
+    f.error = null;
+    // update name if it was still default-ish and feed has a title
+    if(feedTitle && f.name === f.url) f.name = feedTitle;
+  }catch(e){
+    f.error = `取得エラー: ${e.message}`;
+    f.posts = f.posts || [];
+  }finally{
+    f.loading = false;
+    loadingCount--;
+    if(loadingCount===0){
+      const errs = follows.filter(x=>x.error).length;
+      if(errs) setStatus('err', `${errs}件のエラー`);
+      else setStatus('ok', `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`);
+    }
+    save();
+    render();
+  }
+}
+
+function shouldRefetch(f){
+  if(!f.lastFetched) return true;
+  return Date.now() - f.lastFetched > FREQ_INTERVAL[f.freq];
+}
+
+async function refreshAll(){
+  for(const f of follows){
+    if(shouldRefetch(f)) fetchFollow(f);
+  }
+}
+
+/* ── Render ── */
+function allTags(){
+  const t = new Set();
+  follows.forEach(f=>f.tags.forEach(x=>t.add(x)));
+  return ['すべて', ...t];
+}
+
+function colorOf(f){return COLORS[f.colorIdx % COLORS.length]}
+function isDark(){return window.matchMedia('(prefers-color-scheme:dark)').matches}
+
+function renderFollowCard(f){
+  const isExp = expanded === f.id;
+  const c = colorOf(f);
+  const bg = isDark() ? c.dark_bg : c.bg;
+  const fg = isDark() ? c.dark_fg : c.fg;
+  const latestPost = f.posts?.[0];
+  const snippet = latestPost ? latestPost.title : (f.error ? '⚠ エラー' : '記事なし');
+  const pillClass = FREQ_PILL[f.freq] || '';
+  const agoText = latestPost?.date ? relativeTime(latestPost.date) : '';
+
+  return `
+  <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}">
+    <div class="fc-row" onclick="toggleExpand(${f.id})">
+      <div class="fc-avatar" style="background:${bg};color:${fg}">${f.initials}</div>
+      <div class="fc-body">
+        <div class="fc-top">
+          <span class="fc-name">${esc(f.name)}</span>
+          <span class="fc-platform">${esc(f.platform)}</span>
+          ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
+        </div>
+        <div class="fc-snippet">${esc(snippet)}</div>
+      </div>
+      <div class="fc-right">
+        ${f.loading ? '<div class="fc-spinner"></div>' : ''}
+        <span class="freq-pill ${pillClass}">${f.freq}</span>
+        <span class="fc-ago">${agoText}</span>
+        <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
+      </div>
+    </div>
+    <div class="fc-detail">
+      ${renderDetail(f)}
+    </div>
+  </div>`;
+}
+
+function fmtDuration(sec){
+  if(!sec || sec<=0) return '';
+  const h = Math.floor(sec/3600);
+  const m = Math.floor((sec%3600)/60);
+  const s = sec%60;
+  if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function renderDetail(f){
+  if(f.loading) return '<div class="dp-empty">読み込み中...</div>';
+  if(f.error) return `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" onclick="fetchFollow(follows.find(x=>x.id===${f.id}))">再試行</button>`;
+  if(!f.posts || f.posts.length===0) return '<div class="dp-empty">記事が見つかりませんでした</div>';
+  return `<ul class="detail-posts">
+    ${f.posts.map(p=>{
+      const dur = fmtDuration(p.duration);
+      return `<li class="dp-item">
+        <div class="dp-dot"></div>
+        <a class="dp-link" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
+        ${dur ? `<span class="dp-dur">${esc(dur)}</span>` : ''}
+        <span class="dp-date">${p.date ? relativeTime(p.date) : ''}</span>
+      </li>`;
+    }).join('')}
+  </ul>`;
+}
+
+function updateSortBtn(){
+  const btn = document.getElementById('sortBtn');
+  if(btn){
+    btn.textContent = sortMode==='latest' ? '⇅ 頻度順' : '⇅ 最新順';
+    btn.style.background = sortMode==='latest' ? 'var(--accent-light)' : '';
+    btn.style.color = sortMode==='latest' ? 'var(--accent-mid)' : '';
+    btn.style.borderColor = sortMode==='latest' ? 'var(--accent-mid)' : '';
+  }
+}
+
+function render(){
+  renderSidebar();
+  renderMain();
+  renderTags();
+  updateSortBtn();
+}
+
+function toggleSort(){
+  sortMode = sortMode==='freq' ? 'latest' : 'freq';
+  updateSortBtn();
+  renderSidebar();
+  renderMain();
+  renderTags();
+}
+
+function renderTags(){
+  const tags = allTags();
+  document.getElementById('tagsScroll').innerHTML = tags.map(t=>
+    `<button class="tag-btn${t===activeTag?' active':''}" onclick="setTag('${t}')">${t}</button>`
+  ).join('');
+}
+
+function renderSidebar(){
+  const sb = document.getElementById('sidebar');
+  const freqCounts = {};
+  follows.forEach(f=>{ freqCounts[f.freq] = (freqCounts[f.freq]||0)+1; });
+  let html = `<div class="sb-section">頻度</div>`;
+  FREQS.forEach(fr=>{
+    const cnt = freqCounts[fr] || 0;
+    if(!cnt) return;
+    html += `<button class="sb-btn${activeFreq===fr?' active':''}" onclick="setFreq('${fr}')">
+      <div class="sb-dot"></div>${fr}
+      <span class="sb-count">${cnt}</span>
+    </button>`;
+  });
+  if(activeFreq){
+    html += `<button class="sb-btn" onclick="setFreq(null)">
+      <div class="sb-dot"></div>すべて
+    </button>`;
+  }
+  sb.innerHTML = html;
+}
+
+function dayLabel(date){
+  if(!date) return '日付不明';
+  const now = new Date();
+  const d = new Date(date);
+  const diffDays = Math.floor((now - d) / 86400000);
+  if(diffDays === 0) return '今日';
+  if(diffDays === 1) return '昨日';
+  if(diffDays < 7) return `${diffDays}日前`;
+  return d.toLocaleDateString('ja-JP', {month:'long', day:'numeric'});
+}
+
+function renderTimeline(filtered){
+  // 全フォローの全投稿を1つの配列に展開
+  const allPosts = [];
+  filtered.forEach(f=>{
+    const c = colorOf(f);
+    const bg = isDark() ? c.dark_bg : c.bg;
+    const fg = isDark() ? c.dark_fg : c.fg;
+    (f.posts||[]).forEach(p=>{
+      allPosts.push({...p, follow:f, bg, fg});
+    });
+  });
+
+  if(allPosts.length === 0){
+    return `<div class="empty"><h2>動画がありません</h2><p>↻ 更新してフィードを取得してください。</p></div>`;
+  }
+
+  // 日付順に降順ソート（日付なしは末尾）
+  allPosts.sort((a,b)=>{
+    if(!a.date && !b.date) return 0;
+    if(!a.date) return 1;
+    if(!b.date) return -1;
+    return b.date - a.date;
+  });
+
+  // 日付ごとにグループ化
+  const groups = {};
+  const groupOrder = [];
+  allPosts.forEach(p=>{
+    const key = p.date ? p.date.toDateString() : '__nodate__';
+    const label = dayLabel(p.date);
+    if(!groups[key]){ groups[key]=[]; groupOrder.push({key,label}); }
+    groups[key].push(p);
+  });
+
+  let html = '';
+  groupOrder.forEach(({key,label})=>{
+    html += `<div class="tl-day-label">${label}</div>`;
+    groups[key].forEach(p=>{
+      const dur = fmtDuration(p.duration);
+      html += `<div class="tl-card">
+        <div class="tl-avatar" style="background:${p.bg};color:${p.fg}">${p.follow.initials}</div>
+        <div class="tl-body">
+          <div class="tl-channel">${esc(p.follow.name)}</div>
+          <div class="tl-title"><a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a></div>
+        </div>
+        <div class="tl-right">
+          ${dur ? `<span class="tl-dur">${dur}</span>` : ''}
+          <span class="tl-ago">${p.date ? relativeTime(p.date) : ''}</span>
+        </div>
+      </div>`;
+    });
+  });
+  return html;
+}
+
+function renderMain(){
+  const main = document.getElementById('main');
+  let filtered = follows.filter(f=>{
+    if(activeTag !== 'すべて' && !f.tags.includes(activeTag)) return false;
+    if(activeFreq && f.freq !== activeFreq) return false;
+    return true;
+  });
+
+  if(follows.length===0){
+    main.innerHTML = `<div class="empty">
+      <h2>フォローしていません</h2>
+      <p>「+ 追加」からRSSフィードのURLを入力して<br>フォローを開始しましょう。</p>
+    </div>`;
+    return;
+  }
+  if(filtered.length===0){
+    main.innerHTML = `<div class="empty"><h2>該当なし</h2><p>フィルターを変更してください。</p></div>`;
+    return;
+  }
+
+  if(sortMode === 'latest'){
+    main.innerHTML = renderTimeline(filtered);
+  } else {
+    // 頻度別グループ
+    const grouped = {};
+    filtered.forEach(f=>{ if(!grouped[f.freq]) grouped[f.freq]=[]; grouped[f.freq].push(f); });
+    const orderedFreqs = FREQS.filter(fr=>grouped[fr]);
+    let html = '';
+    orderedFreqs.forEach(fr=>{
+      html += `<div class="group-label">${fr}</div>`;
+      grouped[fr].forEach(f=>{ html += renderFollowCard(f); });
+    });
+    main.innerHTML = html;
+  }
+}
+
+/* ── Modal ── */
+function openModal(){
+  showModal = true;
+  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
+  renderModal();
+}
+function closeModal(){ showModal=false; document.getElementById('modalContainer').innerHTML=''; }
+
+function renderModal(){
+  if(!showModal){document.getElementById('modalContainer').innerHTML='';return;}
+  const swatches = COLORS.map((c,i)=>
+    `<div class="color-swatch${i===formData.colorIdx?' selected':''}"
+      style="background:${c.bg};border-color:${i===formData.colorIdx?c.fg:'transparent'}"
+      onclick="formData.colorIdx=${i};renderModal()"></div>`
+  ).join('');
+
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="closeModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h2>フォローを追加</h2>
+      <div class="form-row">
+        <label class="form-label">RSS / Atom フィード URL</label>
+        <input class="form-input" id="f-url" type="url" value="${esc(formData.url)}"
+          oninput="formData.url=this.value"
+          onblur="autoFetchTitle(this.value.trim())"
+          placeholder="https://example.com/feed">
+        <div class="form-hint" id="f-url-status" style="min-height:16px">URLを入力すると名前を自動取得します</div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">名前</label>
+        <input class="form-input" id="f-name" type="text" value="${esc(formData.name)}"
+          oninput="formData.name=this.value" placeholder="URLを入力後に自動入力されます">
+      </div>
+      <div class="form-row">
+        <label class="form-label">プラットフォーム</label>
+        <select class="form-select" id="f-platform" onchange="formData.platform=this.value">
+          ${['RSS/ブログ','YouTube','Podcast','その他'].map(p=>`<option${p===formData.platform?' selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">チェック頻度</label>
+        <select class="form-select" id="f-freq" onchange="formData.freq=this.value">
+          ${FREQS.map(f=>`<option${f===formData.freq?' selected':''}>${f}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">タグ（カンマ区切り）</label>
+        <input class="form-input" id="f-tags" type="text" value="${esc(formData.tags)}"
+          oninput="formData.tags=this.value" placeholder="例: tech, news, 読み物">
+      </div>
+      <div class="form-row">
+        <label class="form-label">カラー</label>
+        <div class="color-row">${swatches}</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
+        <button class="btn-ok" onclick="addFollow()">追加して取得</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function addFollow(){
+  const url = document.getElementById('f-url').value.trim();
+  const name = document.getElementById('f-name').value.trim() || url;
+  if(!url){ alert('URLは必須です'); return; }
+  const tags = document.getElementById('f-tags').value
+    .split(',').map(s=>s.trim()).filter(Boolean);
+  const initials = name.split(/[\s\/\-_]+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || '??';
+  const f = {
+    id: Date.now(),
+    name, url,
+    platform: document.getElementById('f-platform').value,
+    freq: document.getElementById('f-freq').value,
+    tags: tags.length ? tags : ['一般'],
+    colorIdx: formData.colorIdx,
+    initials,
+    posts: [],
+    loading: false,
+    lastFetched: null,
+    error: null,
+  };
+  follows.push(f);
+  save();
+  closeModal();
+  render();
+  fetchFollow(f);
+}
+
+function delFollow(e, id){
+  e.stopPropagation();
+  if(!confirm('このフォローを削除しますか？')) return;
+  follows = follows.filter(f=>f.id!==id);
+  if(expanded===id) expanded=null;
+  save();
+  render();
+}
+
+function toggleExpand(id){ expanded = expanded===id ? null : id; render(); }
+function setTag(t){ activeTag=t; render(); }
+function setFreq(f){ activeFreq=f; render(); }
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ── Import ── */
+function parseImportText(text){
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  const items = [];
+  let currentTag = '一般';
+
+  for(const line of lines){
+    // タグ行: #キャンプ
+    if(line.startsWith('#')){
+      currentTag = line.slice(1).trim() || '一般';
+      continue;
+    }
+    // URL + 名前 or 名前 + URL
+    const urlMatch = line.match(/https?:\/\/\S+/);
+    if(!urlMatch) continue;
+    const url = urlMatch[0];
+    const rest = line.replace(url, '').trim();
+    const name = rest || url;
+    items.push({url, name, tag: currentTag});
+  }
+  return items;
+}
+
+let importText = '';
+
+function openImportModal(){
+  importText = '';
+  renderImportModal();
+}
+
+function renderImportModal(){
+  const parsed = parseImportText(importText);
+  const existingUrls = new Set(follows.map(f=>f.url));
+  const newItems = parsed.filter(p=>!existingUrls.has(p.url));
+  const dupItems = parsed.filter(p=>existingUrls.has(p.url));
+
+  let previewHtml = '';
+  if(!importText.trim()){
+    previewHtml = `<div class="ip-empty">テキストを貼り付けるとプレビューが表示されます</div>`;
+  } else if(parsed.length === 0){
+    previewHtml = `<div class="ip-empty">URLが見つかりませんでした</div>`;
+  } else {
+    previewHtml = parsed.map(p=>{
+      const dup = existingUrls.has(p.url);
+      return `<div class="ip-row">
+        <span class="ip-tag">${esc(p.tag)}</span>
+        <span class="ip-name">${esc(p.name)}</span>
+        <span class="ip-url">${esc(p.url.replace('https://www.youtube.com/feeds/videos.xml?channel_id=','yt:'))}</span>
+        ${dup ? '<span class="ip-dup">登録済み</span>' : ''}
+      </div>`;
+    }).join('');
+  }
+
+  const summaryHtml = parsed.length > 0
+    ? `<div class="import-summary">
+        合計 <b>${parsed.length}</b> 件 &nbsp;／&nbsp;
+        新規 <b>${newItems.length}</b> 件 &nbsp;／&nbsp;
+        重複スキップ ${dupItems.length} 件
+       </div>`
+    : '';
+
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="closeImportModal()">
+    <div class="modal" style="width:520px" onclick="event.stopPropagation()">
+      <h2>一括インポート</h2>
+      <div class="form-row">
+        <label class="form-label">テキストを貼り付け</label>
+        <textarea class="import-textarea" id="import-ta"
+          placeholder="#タグ名&#10;https://... チャンネル名&#10;https://... チャンネル名&#10;&#10;#別のタグ&#10;https://..."
+          oninput="importText=this.value;renderImportModal()">${esc(importText)}</textarea>
+        <div class="form-hint">
+          # から始まる行はタグ、URLの後ろにチャンネル名を書く形式に対応しています
+        </div>
+      </div>
+      <div class="import-preview">${previewHtml}</div>
+      ${summaryHtml}
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeImportModal()">キャンセル</button>
+        <button class="btn-ok" ${newItems.length===0?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="execImport()">
+          ${newItems.length} 件を登録
+        </button>
+      </div>
+    </div>
+  </div>`;
+
+  // テキストエリアにフォーカス＆カーソルを末尾に
+  const ta = document.getElementById('import-ta');
+  if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function closeImportModal(){
+  document.getElementById('modalContainer').innerHTML='';
+}
+
+function execImport(){
+  const parsed = parseImportText(importText);
+  const existingUrls = new Set(follows.map(f=>f.url));
+  const newItems = parsed.filter(p=>!existingUrls.has(p.url));
+  if(newItems.length === 0) return;
+
+  const newFollows = newItems.map((p, i) => {
+    const name = p.name;
+    const initials = name.split(/[\s\/\-_]+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || '??';
+    return {
+      id: Date.now() + i,
+      name, url: p.url,
+      platform: p.url.includes('youtube.com') ? 'YouTube' : 'RSS/ブログ',
+      freq: '毎週',
+      tags: [p.tag],
+      colorIdx: (follows.length + i) % COLORS.length,
+      initials,
+      posts: [],
+      loading: false,
+      lastFetched: null,
+      error: null,
+    };
+  });
+
+  follows.push(...newFollows);
+  save();
+  closeImportModal();
+  render();
+
+  // 順番にフェッチ（一気に全部飛ばさず少し間隔を空ける）
+  newFollows.forEach((f, i) => {
+    setTimeout(() => fetchFollow(f), i * 300);
+  });
+}
+
+
+setInterval(()=>{
+  follows.forEach(f=>{ if(shouldRefetch(f) && !f.loading) fetchFollow(f); });
+}, 60*1000);
+
+/* ── Boot ── */
+load();
+render();
+setStatus('idle','準備完了');
+
+/* Initial fetch for loaded follows */
+if(follows.length){
+  setTimeout(()=>{
+    follows.forEach(f=>{ if(shouldRefetch(f)) fetchFollow(f); });
+  }, 300);
+}
+</script>
+</body>
+</html>
