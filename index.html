@@ -346,6 +346,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <button class="hdr-btn" onclick="refreshAll()">↻ 更新</button>
     <button class="hdr-btn" id="sortBtn" onclick="toggleSort()">⇅ 最新順</button>
     <button class="hdr-btn" onclick="openImportModal()">↑ 一括インポート</button>
+    <button class="hdr-btn" onclick="exportJSON()" title="フォローデータをJSONで書き出し">↓ エクスポート</button>
+    <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()" title="JSONファイルを読み込む">↑ インポート</button>
+    <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn primary" onclick="openModal()">+ 追加</button>
   </div>
 </div>
@@ -1111,6 +1114,61 @@ function execImport(){
   });
 }
 
+
+/* ── JSON Export / Import ── */
+function exportJSON(){
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    follows: follows.map(f=>({
+      id: f.id, name: f.name, url: f.url,
+      platform: f.platform, freq: f.freq,
+      tags: f.tags, colorIdx: f.colorIdx, initials: f.initials,
+    }))
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `fraidycat_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importJSON(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      const data = JSON.parse(e.target.result);
+      if(!data.follows || !Array.isArray(data.follows))
+        throw new Error('follows フィールドが見つかりません');
+      const existingUrls = new Set(follows.map(f=>f.url));
+      const newFollows = data.follows
+        .filter(f => f.url && !existingUrls.has(f.url))
+        .map((f,i) => ({
+          ...f,
+          id: Date.now() + i,
+          posts: [], loading: false,
+          lastFetched: null, error: null,
+        }));
+      const skipped = data.follows.length - newFollows.length;
+      if(newFollows.length === 0){
+        alert(`インポートするデータがありません（${skipped}件はすでに登録済みです）`);
+        return;
+      }
+      follows.push(...newFollows);
+      save();
+      render();
+      newFollows.forEach((f,i)=>{ setTimeout(()=>fetchFollow(f), i*300); });
+      alert(`${newFollows.length}件をインポートしました${skipped>0?`（${skipped}件は重複のためスキップ）`:''}`);
+    } catch(err){
+      alert('読み込みエラー: ' + err.message);
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
 
 setInterval(()=>{
   follows.forEach(f=>{ if(shouldRefetch(f) && !f.loading) fetchFollow(f); });
