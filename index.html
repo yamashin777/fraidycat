@@ -381,6 +381,32 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .tl-day-label::after{content:'';flex:1;height:1px;background:var(--border)}
 .tl-day-label:first-child{margin-top:0}
 
+/* Bulk freq modal */
+.freq-grid{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.freq-option{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border:1px solid var(--border);border-radius:8px;cursor:pointer;
+  transition:all 0.12s;-webkit-tap-highlight-color:transparent;
+}
+.freq-option:hover{border-color:var(--border-strong);background:var(--tag-bg)}
+.freq-option.selected{border-color:var(--accent);background:var(--accent-light)}
+.freq-option-label{font-size:14px;font-weight:500;flex:1}
+.freq-option-desc{font-size:12px;color:var(--text-muted)}
+.freq-option-check{font-size:16px;color:var(--accent);opacity:0}
+.freq-option.selected .freq-option-check{opacity:1}
+.bulk-target{margin-top:12px}
+.bulk-target-label{font-size:11px;font-family:'DM Mono',monospace;font-weight:500;
+  letter-spacing:0.06em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;display:block}
+.bulk-tag-list{display:flex;gap:6px;flex-wrap:wrap}
+.bulk-tag-btn{
+  font-size:12px;padding:4px 10px;border-radius:99px;
+  border:1px solid var(--border);background:transparent;
+  color:var(--text-muted);cursor:pointer;transition:all 0.12s;
+}
+.bulk-tag-btn.selected{background:var(--accent);border-color:var(--accent);color:#fff}
+.bulk-summary{font-size:12px;color:var(--text-muted);margin-top:10px;min-height:18px}
+.bulk-summary b{color:var(--accent-mid)}
+
 /* Import modal */
 .import-textarea{
   width:100%;height:160px;padding:8px 10px;
@@ -431,6 +457,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <button class="hdr-btn" onclick="exportJSON()">↓ エクスポート</button>
     <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()">↑ インポート</button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
+    <button class="hdr-btn" onclick="openBulkFreqModal()">⏱ 頻度一括変更</button>
     <button class="hdr-btn primary" onclick="openModal()">+ 追加</button>
   </div>
   <!-- スマホ用ハンバーガーボタン -->
@@ -453,6 +480,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <span class="drawer-icon">↻</span>すべて更新
   </button>
   <div class="drawer-title">データ</div>
+  <button class="drawer-btn" onclick="openBulkFreqModal();closeDrawer()">
+    <span class="drawer-icon">⏱</span>頻度を一括変更
+  </button>
   <button class="drawer-btn" onclick="openImportModal();closeDrawer()">
     <span class="drawer-icon">📋</span>テキスト一括インポート
   </button>
@@ -1273,6 +1303,95 @@ function execImport(){
   });
 }
 
+
+/* ── 頻度一括変更 ── */
+let bulkFreqSelected = 'リアルタイム';
+let bulkTagSelected = null; // null=すべて
+
+const FREQ_DESC = {
+  'リアルタイム': '5分ごとにチェック',
+  '毎日':        '1日1回チェック',
+  '毎週':        '週1回チェック',
+  '毎月':        '月1回チェック',
+  '毎年':        '年1回チェック',
+};
+
+function openBulkFreqModal(){
+  bulkFreqSelected = 'リアルタイム';
+  bulkTagSelected = null;
+  renderBulkFreqModal();
+}
+
+function closeBulkFreqModal(){
+  document.getElementById('modalContainer').innerHTML = '';
+}
+
+function bulkFreqTargetCount(){
+  return follows.filter(f =>
+    bulkTagSelected === null || f.tags.includes(bulkTagSelected)
+  ).length;
+}
+
+function renderBulkFreqModal(){
+  const allTags = [...new Set(follows.flatMap(f => f.tags))];
+  const count = bulkFreqTargetCount();
+
+  const freqOptions = FREQS.map(fr => `
+    <div class="freq-option${fr === bulkFreqSelected ? ' selected' : ''}"
+         onclick="bulkFreqSelected='${fr}';renderBulkFreqModal()">
+      <div>
+        <div class="freq-option-label">${fr}</div>
+        <div class="freq-option-desc">${FREQ_DESC[fr]}</div>
+      </div>
+      <span class="freq-option-check">✓</span>
+    </div>`).join('');
+
+  const tagBtns = [
+    `<button class="bulk-tag-btn${bulkTagSelected===null?' selected':''}"
+       onclick="bulkTagSelected=null;renderBulkFreqModal()">すべて</button>`,
+    ...allTags.map(t =>
+      `<button class="bulk-tag-btn${bulkTagSelected===t?' selected':''}"
+         onclick="bulkTagSelected='${t}';renderBulkFreqModal()">${t}</button>`)
+  ].join('');
+
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="closeBulkFreqModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h2>頻度を一括変更</h2>
+      <div class="form-row">
+        <label class="form-label">変更後の頻度</label>
+        <div class="freq-grid">${freqOptions}</div>
+      </div>
+      <div class="bulk-target">
+        <span class="bulk-target-label">対象タグで絞り込む</span>
+        <div class="bulk-tag-list">${tagBtns}</div>
+        <div class="bulk-summary">
+          対象: <b>${count}</b> 件のフォローを「<b>${bulkFreqSelected}</b>」に変更します
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeBulkFreqModal()">キャンセル</button>
+        <button class="btn-ok" onclick="execBulkFreq()">
+          ${count}件に適用
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function execBulkFreq(){
+  const targets = follows.filter(f =>
+    bulkTagSelected === null || f.tags.includes(bulkTagSelected)
+  );
+  targets.forEach(f => { f.freq = bulkFreqSelected; });
+  save();
+  closeBulkFreqModal();
+  render();
+  // リアルタイムに変えた場合は即フェッチ
+  if(bulkFreqSelected === 'リアルタイム'){
+    targets.forEach((f, i) => setTimeout(() => fetchFollow(f), i * 300));
+  }
+}
 
 /* ── JSON Export / Import ── */
 function exportJSON(){
