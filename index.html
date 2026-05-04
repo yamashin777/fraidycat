@@ -368,6 +368,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .tl-title a{color:var(--text);text-decoration:none}
 .tl-title a:hover{color:var(--accent);text-decoration:underline}
+.tl-datetime{font-size:10px;font-family:'DM Mono',monospace;color:var(--text-faint);margin-top:2px}
 .tl-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .tl-dur{font-size:10px;font-family:'DM Mono',monospace;
   background:var(--tag-bg);color:var(--tag-text);
@@ -460,10 +461,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <button class="hdr-btn" onclick="openBulkFreqModal()">⏱ 頻度一括変更</button>
     <button class="hdr-btn primary" onclick="openModal()">+ 追加</button>
   </div>
-  <!-- スマホ用ハンバーガーボタン -->
-  <button class="menu-btn" onclick="openDrawer()" aria-label="メニュー">
-    <span></span><span></span><span></span>
-  </button>
+  <!-- スマホ用ハンバーガーボタンは削除（ボトムナビの☰から操作） -->
 </div>
 
 <!-- スマホ用ドロワーメニュー -->
@@ -507,13 +505,13 @@ body{display:flex;flex-direction:column;min-height:100vh}
       <span class="bnav-icon">📋</span>頻度順
     </button>
     <button class="bnav-btn" id="bnavLatest" onclick="setSortMode('latest')">
-      <span class="bnav-icon">🕐</span>最新順
+      <span class="bnav-icon">🕐</span>新着順
     </button>
-    <button class="bnav-btn" onclick="openModal()">
-      <span class="bnav-icon">＋</span>追加
+    <button class="bnav-btn" id="bnavDurDesc" onclick="setSortMode('duration-desc')">
+      <span class="bnav-icon">⏬</span>長い順
     </button>
-    <button class="bnav-btn" onclick="refreshAll()">
-      <span class="bnav-icon">↻</span>更新
+    <button class="bnav-btn" id="bnavDurAsc" onclick="setSortMode('duration-asc')">
+      <span class="bnav-icon">⏫</span>短い順
     </button>
     <button class="bnav-btn" onclick="openDrawer()">
       <span class="bnav-icon">☰</span>メニュー
@@ -586,7 +584,7 @@ let activeFreq = null;
 let expanded = null;
 let showModal = false;
 let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx:0};
-let sortMode = 'freq'; // 'freq' | 'latest'
+let sortMode = 'freq'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc'
 let loadingCount = 0;
 
 /* ── Storage ── */
@@ -890,23 +888,39 @@ function renderDetail(f){
   </ul>`;
 }
 
+const SORT_LABELS = {
+  'freq':          {icon:'📋', label:'頻度順'},
+  'latest':        {icon:'🕐', label:'新着順'},
+  'duration-desc': {icon:'⏬', label:'長い順'},
+  'duration-asc':  {icon:'⏫', label:'短い順'},
+};
+
 function updateSortBtn(){
+  // PCヘッダーボタン
   const btn = document.getElementById('sortBtn');
   if(btn){
-    btn.textContent = sortMode==='latest' ? '⇅ 頻度順' : '⇅ 最新順';
-    btn.style.background = sortMode==='latest' ? 'var(--accent-light)' : '';
-    btn.style.color = sortMode==='latest' ? 'var(--accent-mid)' : '';
-    btn.style.borderColor = sortMode==='latest' ? 'var(--accent-mid)' : '';
+    const isNonFreq = sortMode !== 'freq';
+    btn.textContent = isNonFreq ? `⇅ 頻度順` : '⇅ 新着順';
+    btn.style.background = isNonFreq ? 'var(--accent-light)' : '';
+    btn.style.color = isNonFreq ? 'var(--accent-mid)' : '';
+    btn.style.borderColor = isNonFreq ? 'var(--accent-mid)' : '';
   }
   // ドロワー内ボタン同期
   const dBtn = document.getElementById('drawerSortBtn');
-  if(dBtn) dBtn.querySelector('.drawer-icon').textContent = sortMode==='latest' ? '✓' : '⇅',
-            dBtn.childNodes[1].textContent = sortMode==='latest' ? '頻度順で表示' : '最新順で表示';
-  // ボトムナビ同期
-  const bFreq = document.getElementById('bnavFreq');
-  const bLatest = document.getElementById('bnavLatest');
-  if(bFreq) bFreq.classList.toggle('active', sortMode==='freq');
-  if(bLatest) bLatest.classList.toggle('active', sortMode==='latest');
+  if(dBtn){
+    const info = SORT_LABELS[sortMode];
+    dBtn.querySelector('.drawer-icon').textContent = info.icon;
+    dBtn.childNodes[1].textContent = info.label + 'で表示中';
+  }
+  // ボトムナビ同期（4ボタン）
+  ['freq','latest','duration-desc','duration-asc'].forEach(m=>{
+    const id = {
+      'freq':'bnavFreq','latest':'bnavLatest',
+      'duration-desc':'bnavDurDesc','duration-asc':'bnavDurAsc'
+    }[m];
+    const el = document.getElementById(id);
+    if(el) el.classList.toggle('active', sortMode===m);
+  });
 }
 
 function setSortMode(mode){
@@ -980,7 +994,15 @@ function dayLabel(date){
   return d.toLocaleDateString('ja-JP', {month:'long', day:'numeric'});
 }
 
-function renderTimeline(filtered){
+function fmtDatetime(date){
+  if(!date || isNaN(date)) return '';
+  return date.toLocaleString('ja-JP',{
+    year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit'
+  });
+}
+
+function renderTimeline(filtered, mode){
   // 全フォローの全投稿を1つの配列に展開
   const allPosts = [];
   filtered.forEach(f=>{
@@ -996,43 +1018,76 @@ function renderTimeline(filtered){
     return `<div class="empty"><h2>動画がありません</h2><p>↻ 更新してフィードを取得してください。</p></div>`;
   }
 
-  // 日付順に降順ソート（日付なしは末尾）
-  allPosts.sort((a,b)=>{
-    if(!a.date && !b.date) return 0;
-    if(!a.date) return 1;
-    if(!b.date) return -1;
-    return b.date - a.date;
-  });
-
-  // 日付ごとにグループ化
-  const groups = {};
-  const groupOrder = [];
-  allPosts.forEach(p=>{
-    const key = p.date ? p.date.toDateString() : '__nodate__';
-    const label = dayLabel(p.date);
-    if(!groups[key]){ groups[key]=[]; groupOrder.push({key,label}); }
-    groups[key].push(p);
-  });
-
-  let html = '';
-  groupOrder.forEach(({key,label})=>{
-    html += `<div class="tl-day-label">${label}</div>`;
-    groups[key].forEach(p=>{
-      const dur = fmtDuration(p.duration);
-      html += `<div class="tl-card">
-        <div class="tl-avatar" style="background:${p.bg};color:${p.fg}">${p.follow.initials}</div>
-        <div class="tl-body">
-          <div class="tl-channel">${esc(p.follow.name)}</div>
-          <div class="tl-title"><a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a></div>
-        </div>
-        <div class="tl-right">
-          ${dur ? `<span class="tl-dur">${dur}</span>` : ''}
-          <span class="tl-ago">${p.date ? relativeTime(p.date) : ''}</span>
-        </div>
-      </div>`;
+  // ソート
+  if(mode === 'duration-desc'){
+    allPosts.sort((a,b)=> (b.duration||0) - (a.duration||0));
+  } else if(mode === 'duration-asc'){
+    allPosts.sort((a,b)=> {
+      // duration=nullは末尾
+      if(!a.duration && !b.duration) return 0;
+      if(!a.duration) return 1;
+      if(!b.duration) return -1;
+      return a.duration - b.duration;
     });
-  });
-  return html;
+  } else {
+    // latest: 新着順
+    allPosts.sort((a,b)=>{
+      if(!a.date && !b.date) return 0;
+      if(!a.date) return 1;
+      if(!b.date) return -1;
+      return b.date - a.date;
+    });
+  }
+
+  // 新着順・長さ順でグループラベルを出し分け
+  const useDayGroup = (mode === 'latest');
+
+  if(useDayGroup){
+    // 日付ごとにグループ化
+    const groups = {};
+    const groupOrder = [];
+    allPosts.forEach(p=>{
+      const key = p.date ? p.date.toDateString() : '__nodate__';
+      const label = dayLabel(p.date);
+      if(!groups[key]){ groups[key]=[]; groupOrder.push({key,label}); }
+      groups[key].push(p);
+    });
+    let html = '';
+    groupOrder.forEach(({label})=>{
+      html += `<div class="tl-day-label">${label}</div>`;
+      groups[label] || (groups[label] = groups[Object.keys(groups).find(k=>dayLabel(new Date(k))===label)||'']);
+    });
+    // グループ順に描画
+    let rendered = '';
+    groupOrder.forEach(({key,label})=>{
+      rendered += `<div class="tl-day-label">${label}</div>`;
+      groups[key].forEach(p=>{ rendered += tlCard(p, mode); });
+    });
+    return rendered;
+  } else {
+    // フラット表示（長い順・短い順）
+    const modeLabel = mode==='duration-desc' ? '長い順' : '短い順';
+    return `<div class="tl-day-label">${modeLabel}</div>`
+      + allPosts.map(p=>tlCard(p, mode)).join('');
+  }
+}
+
+function tlCard(p, mode){
+  const dur = fmtDuration(p.duration);
+  const dateStr = fmtDatetime(p.date);
+  const agoStr = p.date ? relativeTime(p.date) : '';
+  return `<div class="tl-card">
+    <div class="tl-avatar" style="background:${p.bg};color:${p.fg}">${p.follow.initials}</div>
+    <div class="tl-body">
+      <div class="tl-channel">${esc(p.follow.name)}</div>
+      <div class="tl-title"><a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a></div>
+      <div class="tl-datetime">${dateStr}</div>
+    </div>
+    <div class="tl-right">
+      ${dur ? `<span class="tl-dur">${dur}</span>` : ''}
+      <span class="tl-ago">${agoStr}</span>
+    </div>
+  </div>`;
 }
 
 function renderMain(){
@@ -1055,9 +1110,7 @@ function renderMain(){
     return;
   }
 
-  if(sortMode === 'latest'){
-    main.innerHTML = renderTimeline(filtered);
-  } else {
+  if(sortMode === 'freq'){
     // 頻度別グループ
     const grouped = {};
     filtered.forEach(f=>{ if(!grouped[f.freq]) grouped[f.freq]=[]; grouped[f.freq].push(f); });
@@ -1068,6 +1121,8 @@ function renderMain(){
       grouped[fr].forEach(f=>{ html += renderFollowCard(f); });
     });
     main.innerHTML = html;
+  } else {
+    main.innerHTML = renderTimeline(filtered, sortMode);
   }
 }
 
