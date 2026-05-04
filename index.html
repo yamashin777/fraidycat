@@ -47,8 +47,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .header{
   position:sticky;top:0;z-index:50;
   background:var(--surface);border-bottom:1px solid var(--border);
-  padding:0 1.5rem;
-  display:flex;align-items:center;gap:1rem;height:52px;
+  padding:0 1rem;
+  display:flex;align-items:center;gap:8px;height:52px;
 }
 .logo{
   font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:-0.02em;
@@ -61,9 +61,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .tags-scroll::-webkit-scrollbar{display:none}
 .tag-btn{
   white-space:nowrap;font-size:12px;font-family:'DM Mono',monospace;
-  padding:3px 10px;border-radius:99px;border:1px solid var(--border);
+  padding:4px 10px;border-radius:99px;border:1px solid var(--border);
   background:transparent;color:var(--text-muted);cursor:pointer;
-  transition:all 0.15s;flex-shrink:0;
+  transition:all 0.15s;flex-shrink:0;-webkit-tap-highlight-color:transparent;
 }
 .tag-btn:hover{border-color:var(--border-strong);color:var(--text)}
 .tag-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -72,10 +72,50 @@ body{display:flex;flex-direction:column;min-height:100vh}
   font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;
   border:1px solid var(--border);background:transparent;color:var(--text-muted);
   font-family:'DM Sans',sans-serif;transition:all 0.15s;white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
 }
 .hdr-btn:hover{background:var(--tag-bg);color:var(--text)}
 .hdr-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .hdr-btn.primary:hover{opacity:0.88}
+/* ハンバーガーメニューボタン（スマホのみ表示） */
+.menu-btn{
+  display:none;width:40px;height:40px;border-radius:8px;
+  border:1px solid var(--border);background:transparent;
+  cursor:pointer;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;flex-shrink:0;-webkit-tap-highlight-color:transparent;
+}
+.menu-btn span{
+  display:block;width:18px;height:2px;background:var(--text-muted);
+  border-radius:2px;transition:all 0.2s;
+}
+
+/* ドロワーメニュー（スマホ用） */
+.drawer-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:90;
+}
+.drawer-backdrop.open{display:block}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:260px;
+  background:var(--surface);border-left:1px solid var(--border);
+  z-index:91;transform:translateX(100%);transition:transform 0.25s ease;
+  display:flex;flex-direction:column;padding:1rem;gap:8px;overflow-y:auto;
+}
+.drawer.open{transform:translateX(0)}
+.drawer-title{
+  font-size:11px;font-family:'DM Mono',monospace;font-weight:500;
+  letter-spacing:0.08em;color:var(--text-faint);text-transform:uppercase;
+  padding:8px 4px 4px;margin-top:8px;
+}
+.drawer-btn{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:12px 12px;background:transparent;border:1px solid var(--border);
+  border-radius:8px;font-size:14px;color:var(--text);cursor:pointer;
+  font-family:'DM Sans',sans-serif;text-align:left;
+  -webkit-tap-highlight-color:transparent;transition:background 0.12s;
+}
+.drawer-btn:hover{background:var(--tag-bg)}
+.drawer-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.drawer-icon{font-size:16px;width:20px;text-align:center}
 
 /* Layout */
 .layout{display:flex;flex:1;min-height:0}
@@ -89,9 +129,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
   padding:0 1.25rem;margin:1rem 0 0.4rem;text-transform:uppercase}
 .sb-btn{
   display:flex;align-items:center;gap:8px;width:100%;
-  padding:6px 1.25rem;background:none;border:none;
+  padding:8px 1.25rem;background:none;border:none;
   font-size:13px;color:var(--text-muted);cursor:pointer;text-align:left;
   transition:all 0.12s;border-left:2px solid transparent;
+  -webkit-tap-highlight-color:transparent;
 }
 .sb-btn:hover{background:var(--tag-bg);color:var(--text)}
 .sb-btn.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent-light)}
@@ -102,7 +143,48 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .sb-count{margin-left:auto;font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint)}
 
 /* Main */
-.main{flex:1;overflow-y:auto;padding:1.5rem}
+.main{flex:1;overflow-y:auto;padding:1rem}
+
+/* スマホ用ボトムナビ */
+.bottom-nav{
+  display:none;position:fixed;bottom:0;left:0;right:0;
+  background:var(--surface);border-top:1px solid var(--border);
+  z-index:50;padding:0;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.bottom-nav-inner{display:flex;align-items:stretch;}
+.bnav-btn{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:8px 4px;gap:3px;background:none;border:none;cursor:pointer;
+  color:var(--text-muted);font-size:10px;font-family:'DM Sans',sans-serif;
+  -webkit-tap-highlight-color:transparent;transition:color 0.12s;min-height:52px;
+}
+.bnav-btn:hover,.bnav-btn.active{color:var(--accent)}
+.bnav-icon{font-size:20px;line-height:1}
+
+/* スマホ対応メディアクエリ */
+@media(max-width:640px){
+  .sidebar{display:none}
+  .hdr-actions{display:none}
+  .menu-btn{display:flex}
+  .bottom-nav{display:block}
+  .main{padding:0.75rem;padding-bottom:calc(68px + env(safe-area-inset-bottom))}
+  .header{padding:0 0.75rem;height:48px}
+  .logo{font-size:18px}
+  .statusbar{display:none}
+  /* カードをタップしやすく */
+  .fc-row{padding:12px 12px}
+  .fc-del{padding:6px 8px;font-size:16px}
+  .tl-card{padding:10px 12px}
+  /* モーダルをフルスクリーンに近く */
+  .modal{width:100%!important;max-width:100vw;border-radius:16px 16px 0 0;
+    position:fixed;bottom:0;left:0;right:0;margin:0;
+    max-height:90vh;overflow-y:auto;}
+  .modal-backdrop{align-items:flex-end}
+  .import-preview{max-height:120px}
+  /* ドロワー周り */
+  .freq-pill{display:none}
+}
 
 /* Group */
 .group-label{
@@ -346,16 +428,67 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <button class="hdr-btn" onclick="refreshAll()">↻ 更新</button>
     <button class="hdr-btn" id="sortBtn" onclick="toggleSort()">⇅ 最新順</button>
     <button class="hdr-btn" onclick="openImportModal()">↑ 一括インポート</button>
-    <button class="hdr-btn" onclick="exportJSON()" title="フォローデータをJSONで書き出し">↓ エクスポート</button>
-    <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()" title="JSONファイルを読み込む">↑ インポート</button>
+    <button class="hdr-btn" onclick="exportJSON()">↓ エクスポート</button>
+    <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()">↑ インポート</button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn primary" onclick="openModal()">+ 追加</button>
   </div>
+  <!-- スマホ用ハンバーガーボタン -->
+  <button class="menu-btn" onclick="openDrawer()" aria-label="メニュー">
+    <span></span><span></span><span></span>
+  </button>
+</div>
+
+<!-- スマホ用ドロワーメニュー -->
+<div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-title">操作</div>
+  <button class="drawer-btn primary" onclick="openModal();closeDrawer()">
+    <span class="drawer-icon">＋</span>フォローを追加
+  </button>
+  <button class="drawer-btn" id="drawerSortBtn" onclick="toggleSort();closeDrawer()">
+    <span class="drawer-icon">⇅</span>最新順で表示
+  </button>
+  <button class="drawer-btn" onclick="refreshAll();closeDrawer()">
+    <span class="drawer-icon">↻</span>すべて更新
+  </button>
+  <div class="drawer-title">データ</div>
+  <button class="drawer-btn" onclick="openImportModal();closeDrawer()">
+    <span class="drawer-icon">📋</span>テキスト一括インポート
+  </button>
+  <button class="drawer-btn" onclick="exportJSON();closeDrawer()">
+    <span class="drawer-icon">↓</span>JSONエクスポート
+  </button>
+  <button class="drawer-btn" onclick="document.getElementById('importJsonFileMobile').click();closeDrawer()">
+    <span class="drawer-icon">↑</span>JSONインポート
+  </button>
+  <input type="file" id="importJsonFileMobile" accept=".json" style="display:none" onchange="importJSON(event)">
 </div>
 
 <div class="layout">
   <div class="sidebar" id="sidebar"></div>
-  <div class="main" id="main" style="padding-bottom:2.5rem"></div>
+  <div class="main" id="main"></div>
+</div>
+
+<!-- スマホ用ボトムナビ -->
+<div class="bottom-nav">
+  <div class="bottom-nav-inner">
+    <button class="bnav-btn" id="bnavFreq" onclick="setSortMode('freq')">
+      <span class="bnav-icon">📋</span>頻度順
+    </button>
+    <button class="bnav-btn" id="bnavLatest" onclick="setSortMode('latest')">
+      <span class="bnav-icon">🕐</span>最新順
+    </button>
+    <button class="bnav-btn" onclick="openModal()">
+      <span class="bnav-icon">＋</span>追加
+    </button>
+    <button class="bnav-btn" onclick="refreshAll()">
+      <span class="bnav-icon">↻</span>更新
+    </button>
+    <button class="bnav-btn" onclick="openDrawer()">
+      <span class="bnav-icon">☰</span>メニュー
+    </button>
+  </div>
 </div>
 
 <div class="statusbar">
@@ -735,6 +868,32 @@ function updateSortBtn(){
     btn.style.color = sortMode==='latest' ? 'var(--accent-mid)' : '';
     btn.style.borderColor = sortMode==='latest' ? 'var(--accent-mid)' : '';
   }
+  // ドロワー内ボタン同期
+  const dBtn = document.getElementById('drawerSortBtn');
+  if(dBtn) dBtn.querySelector('.drawer-icon').textContent = sortMode==='latest' ? '✓' : '⇅',
+            dBtn.childNodes[1].textContent = sortMode==='latest' ? '頻度順で表示' : '最新順で表示';
+  // ボトムナビ同期
+  const bFreq = document.getElementById('bnavFreq');
+  const bLatest = document.getElementById('bnavLatest');
+  if(bFreq) bFreq.classList.toggle('active', sortMode==='freq');
+  if(bLatest) bLatest.classList.toggle('active', sortMode==='latest');
+}
+
+function setSortMode(mode){
+  sortMode = mode;
+  updateSortBtn();
+  renderMain();
+}
+
+function openDrawer(){
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawerBackdrop').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeDrawer(){
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
+  document.body.style.overflow='';
 }
 
 function render(){
