@@ -942,31 +942,48 @@ function changeFreq(id, freq){
 /* 日付文字列をSafariでも確実にパース */
 function parseDate(str){
   if(!str) return null;
-  // ISO 8601: 2026-05-03T14:30:00+09:00 → Safariは+09:00をサポートしないことがある
-  // Zに変換してからパース
-  const normalized = str.trim()
-    .replace(/([+-]\d{2}):(\d{2})$/, (_, h, m) => {
-      const offset = (parseInt(h)*60 + parseInt(m)) * (h.startsWith('-') ? -1 : 1);
-      return ''; // タイムゾーン除去してUTCとして扱う（簡易）
-    });
-  // まず標準パース
-  let d = new Date(str);
-  if(!isNaN(d)) return d;
-  // フォールバック: タイムゾーン部分を除去してパース
-  const stripped = str.replace(/[+-]\d{2}:\d{2}$/, '').replace('T',' ');
+  const s = str.trim();
+
+  // パターン1: 標準パース（Chrome/Firefox）
+  let d = new Date(s);
+  if(!isNaN(d.getTime())) return d;
+
+  // パターン2: +09:00 形式のタイムゾーンをUTCに手動変換
+  // 例: 2026-05-03T14:30:00+09:00
+  const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-])(\d{2}):(\d{2})$/);
+  if(m1){
+    const [,yr,mo,dy,hr,mn,sc,sgn,ohh,omm] = m1;
+    const offsetMin = (parseInt(ohh)*60 + parseInt(omm)) * (sgn==='+' ? 1 : -1);
+    const utcMs = Date.UTC(+yr,+mo-1,+dy,+hr,+mn,+sc) - offsetMin*60000;
+    d = new Date(utcMs);
+    if(!isNaN(d.getTime())) return d;
+  }
+
+  // パターン3: タイムゾーン除去してパース
+  // 例: 2026-05-03T14:30:00
+  const stripped = s.replace(/[+-]\d{2}:\d{2}$/, '').replace('Z','').replace('T',' ');
   d = new Date(stripped);
-  if(!isNaN(d)) return d;
+  if(!isNaN(d.getTime())) return d;
+
+  // パターン4: RFC 2822 (RSS pubDate) 例: Sat, 03 May 2026 14:30:00 +0900
+  // Safariでは問題ないことが多いが念のため
+  const m4 = s.match(/(\d{1,2})\s+(\w{3})\s+(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s+([+-]\d{4})/);
+  if(m4){
+    d = new Date(s.replace(/([+-])(\d{2})(\d{2})$/, '$1$2:$3'));
+    if(!isNaN(d.getTime())) return d;
+  }
+
   return null;
 }
 
 function fmtDatetime(date){
-  if(!date || isNaN(date)) return '';
-  // MM/DD HH:MM 形式（西暦なし）
-  const m = String(date.getMonth()+1).padStart(2,'0');
-  const d = String(date.getDate()).padStart(2,'0');
-  const h = String(date.getHours()).padStart(2,'0');
-  const min = String(date.getMinutes()).padStart(2,'0');
-  return `${m}/${d} ${h}:${min}`;
+  if(!date || isNaN(date.getTime())) return '';
+  // M/D H:MM 形式（十の桁が0の場合は省略）
+  const mo  = date.getMonth() + 1;
+  const dy  = date.getDate();
+  const h   = date.getHours();
+  const mn  = String(date.getMinutes()).padStart(2,'0');
+  return `${mo}/${dy} ${h}:${mn}`;
 }
 
 function fmtDuration(sec){
@@ -987,10 +1004,15 @@ function renderDetail(f){
       const dur = fmtDuration(p.duration);
       const dateStr = fmtDatetime(p.date);
       const isYT = p.link && p.link.includes('youtube.com/watch');
+      const hasDur = p.duration !== null && p.duration > 0;
       return `<li class="dp-item">
         <div class="dp-dot"></div>
         ${dateStr ? `<span class="dp-date">${esc(dateStr)}</span>` : ''}
-        ${dur ? `<span class="dp-dur">${esc(dur)}</span>` : (isYT && p.duration===null ? `<span class="dp-dur-fetch" onclick="fetchYTDuration(event,'${esc(p.link)}',this)">取得</span>` : '')}
+        ${hasDur
+          ? `<span class="dp-dur">${esc(dur)}</span>`
+          : isYT
+            ? `<span class="dp-dur-fetch" onclick="fetchYTDuration(event,'${esc(p.link)}',this)">⏱取得</span>`
+            : ''}
         <a class="dp-link" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
       </li>`;
     }).join('')}
@@ -1082,10 +1104,13 @@ function closeDrawer(){
 }
 
 function render(){
+  const main = document.getElementById('main');
+  const scrollTop = main ? main.scrollTop : 0;
   renderSidebar();
   renderMain();
   renderTags();
   updateSortBtn();
+  if(main) requestAnimationFrame(()=>{ main.scrollTop = scrollTop; });
 }
 
 function toggleSort(){
