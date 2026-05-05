@@ -1044,35 +1044,81 @@ function renderDetail(f){
   </ul>`;
 }
 
-/* YouTube動画ページから再生時間を取得 */
+/* YouTube動画の再生時間を取得（認証不要） */
 async function fetchYTDuration(e, url, el){
   e.stopPropagation();
   el.textContent = '…';
+  el.style.pointerEvents = 'none';
+
   try{
-    // プロキシ経由でYouTubeページのHTMLを取得
-    const raw = await PROXIES[0](url).catch(()=>PROXIES[1](url));
-    // <meta itemprop="duration" content="PT1H23M45S"> を探す
-    const m = raw.match(/itemprop="duration"\s+content="PT([^"]+)"/);
-    if(m){
-      const iso = m[1]; // 例: 1H23M45S / 12M34S / 45S
-      let sec = 0;
-      const hm = iso.match(/(\d+)H/); if(hm) sec += parseInt(hm[1])*3600;
-      const mm = iso.match(/(\d+)M/); if(mm) sec += parseInt(mm[1])*60;
-      const sm = iso.match(/(\d+)S/); if(sm) sec += parseInt(sm[1]);
-      if(sec > 0){
-        el.textContent = fmtDuration(sec);
-        el.className = 'dp-dur';
-        // キャッシュとして保存
-        follows.forEach(f=>{
-          (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration=sec; });
-        });
-        save();
-        return;
+    let sec = 0;
+
+    // 方法1: noembed.com (CORSフリー・認証不要)
+    // 残念ながらdurationは返さないが試す
+    // 方法2: YouTube oEmbed も duration なし
+
+    // 方法3: alloriginsプロキシ経由でYouTubeページのHTMLを取得
+    // "lengthSeconds":"123" または "approxDurationMs":"123000" を探す
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl, {signal: AbortSignal.timeout(15000)});
+    if(res.ok){
+      const json = await res.json();
+      const html = json.contents || '';
+
+      // パターンA: "lengthSeconds":"1234"
+      const mA = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
+      if(mA) sec = parseInt(mA[1]);
+
+      // パターンB: "approxDurationMs":"123456"
+      if(!sec){
+        const mB = html.match(/"approxDurationMs"\s*:\s*"(\d+)"/);
+        if(mB) sec = Math.round(parseInt(mB[1]) / 1000);
+      }
+
+      // パターンC: <meta itemprop="duration" content="PT1H2M3S">
+      if(!sec){
+        const mC = html.match(/itemprop="duration"[^>]+content="PT([^"]+)"/);
+        if(!mC){ 
+          // 逆順でも試す
+          const mC2 = html.match(/content="PT([^"]+)"[^>]+itemprop="duration"/);
+          if(mC2){
+            const iso = mC2[1];
+            const hh = iso.match(/(\d+)H/); if(hh) sec += parseInt(hh[1])*3600;
+            const mm = iso.match(/(\d+)M/); if(mm) sec += parseInt(mm[1])*60;
+            const ss = iso.match(/(\d+)S/); if(ss) sec += parseInt(ss[1]);
+          }
+        } else {
+          const iso = mC[1];
+          const hh = iso.match(/(\d+)H/); if(hh) sec += parseInt(hh[1])*3600;
+          const mm = iso.match(/(\d+)M/); if(mm) sec += parseInt(mm[1])*60;
+          const ss = iso.match(/(\d+)S/); if(ss) sec += parseInt(ss[1]);
+        }
+      }
+
+      // パターンD: "duration":{"seconds":1234}
+      if(!sec){
+        const mD = html.match(/"duration"\s*:\s*\{\s*"seconds"\s*:\s*(\d+)/);
+        if(mD) sec = parseInt(mD[1]);
       }
     }
-    el.textContent = '不明';
-  }catch(err){
-    el.textContent = '?';
+
+    if(sec > 0){
+      el.textContent = fmtDuration(sec);
+      el.className = 'dp-dur';
+      el.style.pointerEvents = '';
+      // キャッシュ保存
+      follows.forEach(f=>{
+        (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration = sec; });
+      });
+      save();
+    } else {
+      // 取得できなかった場合はボタンを残す
+      el.textContent = '再試行';
+      el.style.pointerEvents = '';
+    }
+  } catch(err){
+    el.textContent = '再試行';
+    el.style.pointerEvents = '';
   }
 }
 
