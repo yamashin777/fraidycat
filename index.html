@@ -280,6 +280,32 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .dp-date{font-size:10px;font-family:'DM Mono',monospace;color:var(--text-faint);flex-shrink:0}
 .dp-dur{font-size:10px;font-family:'DM Mono',monospace;color:var(--text-faint);
   background:var(--tag-bg);padding:1px 5px;border-radius:4px;flex-shrink:0}
+.dp-meta{display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto}
+
+/* 個別頻度変更セレクター */
+.fc-freq-row{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:8px 12px;border-bottom:1px solid var(--border);
+  background:var(--bg);
+}
+.fc-freq-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint);
+  white-space:nowrap;flex-shrink:0;}
+.fc-freq-btns{display:flex;gap:4px;flex-wrap:wrap;flex:1}
+.fc-freq-btn{
+  font-size:11px;padding:3px 9px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--text-muted);
+  font-family:'DM Sans',sans-serif;transition:all 0.12s;white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
+}
+.fc-freq-btn:hover{border-color:var(--border-strong);color:var(--text)}
+.fc-freq-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.fc-refresh-btn{
+  font-size:11px;padding:3px 10px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--text-muted);
+  font-family:'DM Sans',sans-serif;transition:all 0.12s;white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;flex-shrink:0;
+}
+.fc-refresh-btn:hover{background:var(--accent-light);color:var(--accent-mid);border-color:var(--accent-mid)}
 .dp-err{font-size:12px;color:var(--danger);font-style:italic}
 .dp-empty{font-size:12px;color:var(--text-faint);font-style:italic}
 .dp-refresh{
@@ -858,6 +884,17 @@ function renderFollowCard(f){
   const pillClass = FREQ_PILL[f.freq] || '';
   const agoText = latestPost?.date ? relativeTime(latestPost.date) : '';
 
+  // 頻度セレクター（展開時に表示）
+  const freqSelector = `
+    <div class="fc-freq-row" onclick="event.stopPropagation()">
+      <span class="fc-freq-label">更新頻度：</span>
+      <div class="fc-freq-btns">
+        ${FREQS.map(fr=>`<button class="fc-freq-btn${f.freq===fr?' active':''}"
+          onclick="changeFreq(${f.id},'${fr}')">${fr}</button>`).join('')}
+      </div>
+      <button class="fc-refresh-btn" onclick="event.stopPropagation();fetchFollow(follows.find(x=>x.id===${f.id}))">↻ 今すぐ更新</button>
+    </div>`;
+
   return `
   <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}">
     <div class="fc-row" onclick="toggleExpand(${f.id})">
@@ -878,9 +915,19 @@ function renderFollowCard(f){
       </div>
     </div>
     <div class="fc-detail">
+      ${freqSelector}
       ${renderDetail(f)}
     </div>
   </div>`;
+}
+
+function changeFreq(id, freq){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  f.freq = freq;
+  save();
+  render();
+  if(freq === 'リアルタイム') fetchFollow(f);
 }
 
 function fmtDuration(sec){
@@ -899,11 +946,14 @@ function renderDetail(f){
   return `<ul class="detail-posts">
     ${f.posts.map(p=>{
       const dur = fmtDuration(p.duration);
+      const dateStr = fmtDatetime(p.date);
       return `<li class="dp-item">
         <div class="dp-dot"></div>
         <a class="dp-link" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
-        ${dur ? `<span class="dp-dur">${esc(dur)}</span>` : ''}
-        <span class="dp-date">${p.date ? relativeTime(p.date) : ''}</span>
+        <span class="dp-meta">
+          ${dur ? `<span class="dp-dur">${esc(dur)}</span>` : ''}
+          ${dateStr ? `<span class="dp-date">${esc(dateStr)}</span>` : ''}
+        </span>
       </li>`;
     }).join('')}
   </ul>`;
