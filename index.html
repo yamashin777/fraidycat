@@ -644,13 +644,38 @@ let loadingCount = 0;
 
 /* ── Storage ── */
 function save(){
-  try{localStorage.setItem('fraidycat_follows', JSON.stringify(follows))}catch(e){}
+  try{
+    // postsのdateはDateオブジェクトなのでISO文字列で保存
+    const data = follows.map(f=>({
+      ...f,
+      posts: (f.posts||[]).map(p=>({
+        ...p,
+        date: p.date instanceof Date ? p.date.toISOString() : (p.date||null)
+      }))
+    }));
+    localStorage.setItem('fraidycat_follows', JSON.stringify(data));
+  }catch(e){}
 }
 function load(){
   try{
     const d = localStorage.getItem('fraidycat_follows');
-    if(d) follows = JSON.parse(d);
-  }catch(e){}
+    if(!d) return;
+    const parsed = JSON.parse(d);
+    if(!Array.isArray(parsed)) return;
+    follows = parsed.map(f=>({
+      ...f,
+      posts: (f.posts||[]).map(p=>({
+        ...p,
+        // 文字列で保存されたdateをDateオブジェクトに復元
+        date: p.date ? new Date(p.date) : null
+      })).filter(p => !p.date || !isNaN(p.date.getTime())),
+      loading: false,
+      error: f.error || null,
+    }));
+  }catch(e){
+    console.warn('load error:', e);
+    follows = [];
+  }
 }
 
 /* ── RSS Fetch ── */
