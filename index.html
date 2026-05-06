@@ -334,6 +334,22 @@ body{display:flex;flex-direction:column;min-height:100vh}
   -webkit-tap-highlight-color:transparent;flex-shrink:0;
 }
 .fc-refresh-btn:hover{background:var(--accent-light);color:var(--accent-mid);border-color:var(--accent-mid)}
+.fc-tag-row{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:6px 12px;border-bottom:1px solid var(--border);
+  background:var(--bg);
+}
+.fc-tag-input{
+  flex:1;min-width:120px;font-size:12px;padding:3px 8px;
+  border:1px solid var(--border-strong);border-radius:6px;
+  background:var(--surface);color:var(--text);
+  font-family:'DM Sans',sans-serif;outline:none;
+}
+.fc-tag-input:focus{border-color:var(--accent)}
+.fc-reg-date{
+  font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint);
+  white-space:nowrap;flex-shrink:0;
+}
 .dp-err{font-size:12px;color:var(--danger);font-style:italic}
 .dp-empty{font-size:12px;color:var(--text-faint);font-style:italic}
 .dp-refresh{
@@ -562,6 +578,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <button class="sort-bar-btn" id="pcSortLatest"  onclick="setSortMode('latest')" title="全動画を投稿日時の新しい順に表示">🕐 新着順</button>
   <button class="sort-bar-btn" id="pcSortDurDesc" onclick="setSortMode('duration-desc')" title="再生時間の長い動画から順に表示">⏬ 長い順</button>
   <button class="sort-bar-btn" id="pcSortDurAsc"  onclick="setSortMode('duration-asc')" title="再生時間の短い動画から順に表示">⏫ 短い順</button>
+  <button class="sort-bar-btn" id="pcSortRegDesc" onclick="setSortMode('registered-desc')" title="最近登録したチャンネルを上に表示">🆕 登録新しい順</button>
+  <button class="sort-bar-btn" id="pcSortRegAsc"  onclick="setSortMode('registered-asc')" title="最初に登録したチャンネルを上に表示">🕰 登録古い順</button>
 </div>
 
 <!-- スマホ用ドロワーメニュー -->
@@ -690,7 +708,7 @@ let activeFreq = null;
 let expanded = null;
 let showModal = false;
 let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx:0};
-let sortMode = 'latest'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc'
+let sortMode = 'latest'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc' | 'registered-desc' | 'registered-asc'
 let ytApiKey = localStorage.getItem('fraidycat_yt_api_key') || '';
 let loadingCount = 0;
 
@@ -1003,7 +1021,12 @@ function renderFollowCard(f){
   // 右端は「最新投稿の日時」を表示
   const agoText = latestPost?.date ? relativeTime(latestPost.date) : (f.lastFetched ? '記事なし' : '未取得');
 
-  // 頻度セレクター（展開時に表示）
+  // 登録日表示
+  const regDate = f.registeredAt
+    ? new Date(f.registeredAt).toLocaleDateString('ja-JP',{year:'numeric',month:'short',day:'numeric'})
+    : '不明';
+
+  // 頻度セレクター＋タグ編集（展開時に表示）
   const freqSelector = `
     <div class="fc-freq-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">更新頻度：</span>
@@ -1011,7 +1034,15 @@ function renderFollowCard(f){
         ${FREQS.map(fr=>`<button class="fc-freq-btn${f.freq===fr?' active':''}"
           onclick="changeFreq(${f.id},'${fr}')">${fr}</button>`).join('')}
       </div>
-      <button class="fc-refresh-btn" onclick="event.stopPropagation();fetchFollow(follows.find(x=>x.id===${f.id}))">↻ 今すぐ更新</button>
+      <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}))">↻ 今すぐ更新</button>
+    </div>
+    <div class="fc-tag-row" onclick="event.stopPropagation()">
+      <span class="fc-freq-label">タグ：</span>
+      <input class="fc-tag-input" id="tag-input-${f.id}"
+        value="${esc(f.tags.join(', '))}"
+        placeholder="カンマ区切りで入力"
+        onchange="changeTag(${f.id}, this.value)">
+      <span class="fc-reg-date">📅 ${regDate}</span>
     </div>`;
 
   return `
@@ -1046,7 +1077,31 @@ function changeFreq(id, freq){
   f.freq = freq;
   save();
   render();
-  if(freq === 'リアルタイム') fetchFollow(f);
+  if(freq === 'リアルタイム') enqueueFetch(f);
+}
+
+function changeTag(id, val){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  f.tags = val.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!f.tags.length) f.tags = ['一般'];
+  save();
+  renderTags(); // タグバーを更新
+  // カードのタグ表示を更新（展開状態を保持したまま）
+  const card = document.getElementById(`fc-${id}`);
+  if(card){
+    const topEl = card.querySelector('.fc-top');
+    if(topEl){
+      // タグpillだけ更新
+      topEl.querySelectorAll('.fc-tag').forEach(el=>el.remove());
+      f.tags.forEach(t=>{
+        const span = document.createElement('span');
+        span.className = 'fc-tag';
+        span.textContent = t;
+        topEl.appendChild(span);
+      });
+    }
+  }
 }
 
 /* 日付文字列をSafariでも確実にパース */
@@ -1108,6 +1163,18 @@ function fmtDuration(sec){
   return `${s}秒`;
 }
 
+/* タイトルからライブ配信かどうかを判定 */
+function isLiveTitle(title){
+  if(!title) return false;
+  const t = title.toLowerCase();
+  return /\blive\b/.test(t)          // "live" 単語
+    || t.includes('ライブ')
+    || t.includes('生放送')
+    || t.includes('生配信')
+    || t.includes('配信中')
+    || /\blive\s*(stream|配信|放送)/.test(t);
+}
+
 function renderDetail(f){
   if(f.loading) return '<div class="dp-empty">読み込み中...</div>';
   if(f.error) return `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" onclick="fetchFollow(follows.find(x=>x.id===${f.id}))">再試行</button>`;
@@ -1117,9 +1184,9 @@ function renderDetail(f){
       const dur = fmtDuration(p.duration);
       const dateStr = fmtDatetime(p.date);
       const isShort = p.link && p.link.includes('/shorts/');
-      const isLive = dur === 'Live';
+      const isLive = dur === 'Live' || isLiveTitle(p.title);
       const durAttr = isLive ? ' data-live="true"' : isShort ? ' data-short="true"' : '';
-      const durText = isShort && !dur ? 'Short' : dur;
+      const durText = isLive ? 'Live' : isShort && !dur ? 'Short' : dur;
       return `<li class="dp-item">
         <div class="dp-dot"></div>
         ${dateStr ? `<span class="dp-date">${esc(dateStr)}</span>` : ''}
@@ -1319,30 +1386,30 @@ function saveApiKey(){
 }
 
 const SORT_LABELS = {
-  'freq':          {icon:'📋', label:'チャンネル順'},
-  'latest':        {icon:'🕐', label:'新着順'},
-  'duration-desc': {icon:'⏬', label:'長い順'},
-  'duration-asc':  {icon:'⏫', label:'短い順'},
+  'freq':              {icon:'📋', label:'チャンネル順'},
+  'latest':            {icon:'🕐', label:'新着順'},
+  'duration-desc':     {icon:'⏬', label:'長い順'},
+  'duration-asc':      {icon:'⏫', label:'短い順'},
+  'registered-desc':   {icon:'🆕', label:'登録新しい順'},
+  'registered-asc':    {icon:'🕰', label:'登録古い順'},
 };
 
 function updateSortBtn(){
-  // PCソートバー
   const pcMap = {
     'freq':'pcSortFreq','latest':'pcSortLatest',
-    'duration-desc':'pcSortDurDesc','duration-asc':'pcSortDurAsc'
+    'duration-desc':'pcSortDurDesc','duration-asc':'pcSortDurAsc',
+    'registered-desc':'pcSortRegDesc','registered-asc':'pcSortRegAsc',
   };
   Object.entries(pcMap).forEach(([mode,id])=>{
     const el = document.getElementById(id);
     if(el) el.classList.toggle('active', sortMode===mode);
   });
-  // ドロワー内ボタン同期
   const dBtn = document.getElementById('drawerSortBtn');
   if(dBtn){
     const info = SORT_LABELS[sortMode];
     dBtn.querySelector('.drawer-icon').textContent = info.icon;
     dBtn.childNodes[1].textContent = info.label + 'で表示中';
   }
-  // ボトムナビ同期
   const bMap = {
     'freq':'bnavFreq','latest':'bnavLatest',
     'duration-desc':'bnavDurDesc','duration-asc':'bnavDurAsc'
@@ -1503,9 +1570,9 @@ function tlCard(p, mode){
   const dateStr = fmtDatetime(p.date);
   const agoStr = p.date ? relativeTime(p.date) : '';
   const isShort = p.link && p.link.includes('/shorts/');
-  const isLive = dur === 'Live';
+  const isLive = dur === 'Live' || isLiveTitle(p.title);
   const durAttr = isLive ? ' data-live="true"' : isShort ? ' data-short="true"' : '';
-  const durText = isShort && !dur ? 'Short' : dur;
+  const durText = isLive ? 'Live' : isShort && !dur ? 'Short' : dur;
   return `<div class="tl-card">
     <div class="tl-avatar" style="background:${p.bg};color:${p.fg}">${p.follow.initials}</div>
     <div class="tl-body">
@@ -1546,6 +1613,16 @@ function renderMain(){
       const da = a.posts?.[0]?.date || new Date(0);
       const db = b.posts?.[0]?.date || new Date(0);
       return db - da;
+    });
+    let html = '';
+    filtered.forEach(f=>{ html += renderFollowCard(f); });
+    main.innerHTML = html;
+  } else if(sortMode === 'registered-desc' || sortMode === 'registered-asc'){
+    // 登録日順（チャンネルカード表示）
+    filtered.sort((a,b)=>{
+      const da = a.registeredAt || a.id;
+      const db = b.registeredAt || b.id;
+      return sortMode === 'registered-desc' ? db - da : da - db;
     });
     let html = '';
     filtered.forEach(f=>{ html += renderFollowCard(f); });
@@ -1626,6 +1703,7 @@ function addFollow(){
   const initials = name.split(/[\s\/\-_]+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || '??';
   const f = {
     id: Date.now(),
+    registeredAt: Date.now(),
     name, url,
     platform: document.getElementById('f-platform').value,
     freq: document.getElementById('f-freq').value,
@@ -1763,6 +1841,7 @@ function execImport(){
     const initials = name.split(/[\s\/\-_]+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || '??';
     return {
       id: Date.now() + i,
+      registeredAt: Date.now() + i,
       name, url: p.url,
       platform: p.url.includes('youtube.com') ? 'YouTube' : 'RSS/ブログ',
       freq: '毎週',
