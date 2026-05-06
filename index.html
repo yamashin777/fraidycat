@@ -295,6 +295,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .dp-dur{font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint);
   background:var(--tag-bg);padding:1px 6px;border-radius:4px;
   border:0.5px solid var(--border);white-space:nowrap;flex-shrink:0}
+.dp-dur[data-live="true"]{
+  background:#C00;color:#fff;border-color:#900;font-weight:500;
+}
 .dp-dur-fetch{font-size:11px;font-family:'DM Mono',monospace;color:var(--accent-mid);
   background:var(--accent-light);padding:1px 6px;border-radius:4px;
   border:0.5px solid var(--accent-mid);white-space:nowrap;flex-shrink:0;
@@ -436,6 +439,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .tl-dur{font-size:10px;font-family:'DM Mono',monospace;
   background:var(--tag-bg);color:var(--tag-text);
   padding:2px 6px;border-radius:4px;}
+.tl-dur[data-live="true"]{background:#C00;color:#fff;font-weight:500;}
 .tl-ago{font-size:11px;color:var(--text-faint);font-family:'DM Mono',monospace;min-width:52px;text-align:right}
 .tl-day-label{
   font-size:10px;font-family:'DM Mono',monospace;font-weight:500;
@@ -1070,7 +1074,8 @@ function fmtDatetime(date){
 }
 
 function fmtDuration(sec){
-  if(sec === -1) return ''; // 取得済みだが時間なし（プレミア公開前等）
+  if(sec === -2) return 'Live';   // ライブ配信中・配信予定
+  if(sec === -1) return '';        // 取得済みだが時間なし
   if(!sec || sec<=0) return '';
   const h = Math.floor(sec/3600);
   const m = Math.floor((sec%3600)/60);
@@ -1091,7 +1096,7 @@ function renderDetail(f){
       return `<li class="dp-item">
         <div class="dp-dot"></div>
         ${dateStr ? `<span class="dp-date">${esc(dateStr)}</span>` : ''}
-        ${dur ? `<span class="dp-dur">${esc(dur)}</span>` : ''}
+        ${dur ? `<span class="dp-dur"${dur==='Live'?' data-live="true"':''}>${esc(dur)}</span>` : ''}
         <a class="dp-link" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
       </li>`;
     }).join('')}
@@ -1141,7 +1146,7 @@ async function fetchDurationsForFollow(f){
   try{
     const ids = pairs.map(x=>x.vid).join(',');
     const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${ytApiKey}&maxResults=50`,
+      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet&id=${ids}&key=${ytApiKey}&maxResults=50`,
       {signal: AbortSignal.timeout(15000)}
     );
     if(!res.ok) return;
@@ -1151,8 +1156,14 @@ async function fetchDurationsForFollow(f){
     pairs.forEach(x=>{
       const item = itemMap[x.vid];
       if(!item){ x.post.duration=-1; return; }
+      // ライブ配信チェック
+      const liveStatus = item.snippet?.liveBroadcastContent; // 'live'|'upcoming'|'none'
       const dur = item.contentDetails?.duration;
-      if(!dur){ x.post.duration=-1; return; }
+      if(liveStatus==='live' || liveStatus==='upcoming'){
+        x.post.duration = -2; // -2=ライブ中/配信予定
+        return;
+      }
+      if(!dur || dur==='PT0S'){ x.post.duration=-1; return; }
       let sec = 0;
       const h = dur.match(/(\d+)H/); if(h) sec += parseInt(h[1])*3600;
       const m = dur.match(/(\d+)M/); if(m) sec += parseInt(m[1])*60;
@@ -1200,13 +1211,12 @@ async function bulkFetchDurations(){
     const ids = chunk.map(x=>x.vid).join(',');
     try{
       const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${ytApiKey}&maxResults=50`,
+        `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet&id=${ids}&key=${ytApiKey}&maxResults=50`,
         {signal: AbortSignal.timeout(15000)}
       );
       if(!res.ok){
         const err = await res.json().catch(()=>({}));
         const msg = err.error?.message || `HTTP ${res.status}`;
-        // クォータ超過の場合は明確に伝える
         if(res.status===403 && msg.includes('quota')){
           setStatus('err', `クォータ超過: 1日の上限(1万回)に達しました。明日また試してください`);
         } else {
@@ -1216,19 +1226,22 @@ async function bulkFetchDurations(){
         return;
       }
       const json = await res.json();
-      // APIが返した動画IDとマッチング
       const itemMap = {};
       (json.items||[]).forEach(item=>{ itemMap[item.id]=item; });
       chunk.forEach(x=>{
         const item = itemMap[x.vid];
         if(!item){ failed++; return; }
+        const liveStatus = item.snippet?.liveBroadcastContent;
         const dur = item.contentDetails?.duration;
-        if(!dur){ failed++; return; }
+        if(liveStatus==='live' || liveStatus==='upcoming'){
+          x.post.duration = -2; done++; return;
+        }
+        if(!dur || dur==='PT0S'){ x.post.duration=-1; failed++; return; }
         let sec = 0;
         const h = dur.match(/(\d+)H/); if(h) sec += parseInt(h[1])*3600;
         const m = dur.match(/(\d+)M/); if(m) sec += parseInt(m[1])*60;
         const s = dur.match(/(\d+)S/); if(s) sec += parseInt(s[1]);
-        x.post.duration = sec > 0 ? sec : -1; // -1=取得済みだが時間なし（プレミア公開前等）
+        x.post.duration = sec > 0 ? sec : -1;
         done++;
       });
       save();
@@ -1470,7 +1483,7 @@ function tlCard(p, mode){
       <div class="tl-datetime">${dateStr}</div>
     </div>
     <div class="tl-right">
-      ${dur ? `<span class="tl-dur">${dur}</span>` : ''}
+      ${dur ? `<span class="tl-dur"${dur==='Live'?' data-live="true"':''}>${dur}</span>` : ''}
       <span class="tl-ago">${agoStr}</span>
     </div>
   </div>`;
