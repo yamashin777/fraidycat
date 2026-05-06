@@ -1070,11 +1070,14 @@ function fmtDatetime(date){
 }
 
 function fmtDuration(sec){
+  if(sec === -1) return ''; // 取得済みだが時間なし（プレミア公開前等）
   if(!sec || sec<=0) return '';
   const h = Math.floor(sec/3600);
   const m = Math.floor((sec%3600)/60);
+  const s = sec % 60;
   if(h>0) return `${h}時間${m}分`;
-  return `${m}分`;
+  if(m>0) return `${m}分${s>0?s+'秒':''}`;
+  return `${s}秒`;
 }
 
 function renderDetail(f){
@@ -1096,9 +1099,16 @@ function renderDetail(f){
 }
 
 /* YouTube動画IDをURLから抽出 */
+/* YouTube動画IDをURLから抽出（Shorts対応） */
 function ytVideoId(url){
-  const m = url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?]+)/);
-  return m ? m[1] : null;
+  if(!url) return null;
+  const m1 = url.match(/[?&]v=([A-Za-z0-9_-]{11})/);
+  if(m1) return m1[1];
+  const m2 = url.match(/\/shorts\/([A-Za-z0-9_-]{11})/);
+  if(m2) return m2[1];
+  const m3 = url.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);
+  if(m3) return m3[1];
+  return null;
 }
 
 /* 動画IDから秒数を返す */
@@ -1118,28 +1128,36 @@ async function fetchYTDurationById(videoId){
   return sec;
 }
 
-/* フォローのYouTube動画時間を自動取得（フィード取得後に呼ばれる） */
 async function fetchDurationsForFollow(f){
   if(!ytApiKey) return;
-  const ytPosts = (f.posts||[]).filter(p=>p.link&&p.link.includes('youtube.com/watch')&&!p.duration);
+  const ytPosts = (f.posts||[]).filter(p=>{
+    if(!p.link) return false;
+    const isYT = p.link.includes('youtube.com')||p.link.includes('youtu.be');
+    return isYT && !p.duration;
+  });
   if(!ytPosts.length) return;
-  const ids = ytPosts.map(p=>ytVideoId(p.link)).filter(Boolean);
-  if(!ids.length) return;
+  const pairs = ytPosts.map(p=>({vid:ytVideoId(p.link), post:p})).filter(x=>x.vid);
+  if(!pairs.length) return;
   try{
+    const ids = pairs.map(x=>x.vid).join(',');
     const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids.join(',')}&key=${ytApiKey}&maxResults=50`,
+      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${ytApiKey}&maxResults=50`,
       {signal: AbortSignal.timeout(15000)}
     );
     if(!res.ok) return;
     const json = await res.json();
-    (json.items||[]).forEach(item=>{
+    const itemMap = {};
+    (json.items||[]).forEach(item=>{ itemMap[item.id]=item; });
+    pairs.forEach(x=>{
+      const item = itemMap[x.vid];
+      if(!item){ x.post.duration=-1; return; }
       const dur = item.contentDetails?.duration;
-      if(!dur) return;
+      if(!dur){ x.post.duration=-1; return; }
       let sec = 0;
       const h = dur.match(/(\d+)H/); if(h) sec += parseInt(h[1])*3600;
       const m = dur.match(/(\d+)M/); if(m) sec += parseInt(m[1])*60;
       const s = dur.match(/(\d+)S/); if(s) sec += parseInt(s[1]);
-      f.posts.forEach(p=>{ if(ytVideoId(p.link)===item.id) p.duration=sec; });
+      x.post.duration = sec > 0 ? sec : -1;
     });
     save();
     debouncedRender();
@@ -1152,27 +1170,31 @@ async function bulkFetchDurations(){
     openApiKeyModal();
     return;
   }
-  // 未取得のYouTube動画を全部集める
+  // 未取得のYouTube動画を全部集める（shorts含む）
   const allPosts = [];
+  let skipped = 0;
   follows.forEach(f=>{
     (f.posts||[]).forEach(p=>{
-      if(p.link && p.link.includes('youtube.com/watch') && !p.duration){
-        const vid = ytVideoId(p.link);
-        if(vid) allPosts.push({vid, post: p});
-      }
+      if(!p.link) return;
+      const isYT = p.link.includes('youtube.com') || p.link.includes('youtu.be');
+      if(!isYT) return;
+      if(p.duration > 0) return; // 取得済み
+      const vid = ytVideoId(p.link);
+      if(vid) allPosts.push({vid, post: p});
+      else skipped++;
     });
   });
 
   if(!allPosts.length){
-    setStatus('ok', '取得済みの動画はありません');
+    setStatus('ok', `未取得の動画はありません${skipped>0?`（ID取得不可: ${skipped}件）`:''}`);
     return;
   }
 
-  setStatus('loading', `動画時間を取得中... (${allPosts.length}件)`);
+  setStatus('loading', `動画時間を取得中... 0/${allPosts.length}件`);
 
-  // 50件ずつに分割してAPIリクエスト
   const CHUNK = 50;
   let done = 0;
+  let failed = 0;
   for(let i=0; i<allPosts.length; i+=CHUNK){
     const chunk = allPosts.slice(i, i+CHUNK);
     const ids = chunk.map(x=>x.vid).join(',');
@@ -1183,34 +1205,46 @@ async function bulkFetchDurations(){
       );
       if(!res.ok){
         const err = await res.json().catch(()=>({}));
-        setStatus('err', `APIエラー: ${err.error?.message || res.status}`);
+        const msg = err.error?.message || `HTTP ${res.status}`;
+        // クォータ超過の場合は明確に伝える
+        if(res.status===403 && msg.includes('quota')){
+          setStatus('err', `クォータ超過: 1日の上限(1万回)に達しました。明日また試してください`);
+        } else {
+          setStatus('err', `APIエラー: ${msg}`);
+        }
+        save(); render();
         return;
       }
       const json = await res.json();
-      (json.items||[]).forEach(item=>{
+      // APIが返した動画IDとマッチング
+      const itemMap = {};
+      (json.items||[]).forEach(item=>{ itemMap[item.id]=item; });
+      chunk.forEach(x=>{
+        const item = itemMap[x.vid];
+        if(!item){ failed++; return; }
         const dur = item.contentDetails?.duration;
-        if(!dur) return;
+        if(!dur){ failed++; return; }
         let sec = 0;
         const h = dur.match(/(\d+)H/); if(h) sec += parseInt(h[1])*3600;
         const m = dur.match(/(\d+)M/); if(m) sec += parseInt(m[1])*60;
         const s = dur.match(/(\d+)S/); if(s) sec += parseInt(s[1]);
-        // 対応する投稿に書き込む
-        chunk.forEach(x=>{ if(x.vid===item.id) x.post.duration=sec; });
+        x.post.duration = sec > 0 ? sec : -1; // -1=取得済みだが時間なし（プレミア公開前等）
         done++;
       });
       save();
-      setStatus('loading', `動画時間を取得中... (${done}/${allPosts.length}件完了)`);
-      // APIレート制限対策で少し間隔を空ける
-      if(i+CHUNK < allPosts.length) await new Promise(r=>setTimeout(r,300));
+      setStatus('loading', `動画時間を取得中... ${done}/${allPosts.length}件`);
+      if(i+CHUNK < allPosts.length) await new Promise(r=>setTimeout(r,200));
     }catch(e){
       setStatus('err', `取得エラー: ${e.message}`);
+      save(); render();
       return;
     }
   }
 
   save();
-  render();
-  setStatus('ok', `動画時間を取得しました (${done}件)`);
+  debouncedRender();
+  const msg = `動画時間の取得完了: ${done}件取得${failed>0?` / ${failed}件取得不可`:''}${skipped>0?` / ${skipped}件ID不明`:''}`;
+  setStatus('ok', msg);
 }
 
 /* APIキー設定モーダル */
