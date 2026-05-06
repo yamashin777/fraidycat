@@ -1043,43 +1043,60 @@ function renderDetail(f){
   </ul>`;
 }
 
-/* YouTube動画の再生時間を取得（認証不要） */
-async function fetchYTDuration(e, url, el){
+/* YouTube動画の再生時間を手動入力 */
+function fetchYTDuration(e, url, el){
   e.stopPropagation();
-  el.textContent = '…';
-  el.style.pointerEvents = 'none';
+  // 入力欄に切り替え
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '例: 12分 / 1:23:45';
+  input.style.cssText = `
+    font-size:11px;font-family:var(--font-mono,monospace);
+    width:90px;padding:1px 6px;border-radius:4px;
+    border:1px solid var(--accent-mid,#5A8C2E);
+    background:var(--color-background-primary,#fff);
+    color:var(--text,#1C1A16);outline:none;
+  `;
+  el.replaceWith(input);
+  input.focus();
 
-  try{
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl, {signal: AbortSignal.timeout(15000)});
-    if(!res.ok) throw new Error('proxy error');
-    const json = await res.json();
-    const html = json.contents || '';
+  function commit(){
+    const val = input.value.trim();
+    if(!val){ input.replaceWith(el); return; }
 
-    // "lengthSeconds":"1234" を抽出（秒単位）
-    const m = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
-    if(m){
-      const sec = parseInt(m[1]);
-      if(sec > 0){
-        el.textContent = fmtDuration(sec);
-        el.className = 'dp-dur';
-        el.style.pointerEvents = '';
-        follows.forEach(f=>{
-          (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration = sec; });
-        });
-        save();
-        return;
-      }
+    // パース: "12分" / "1時間23分" / "1:23:45" / "12:34" / "数字のみ(秒)"
+    let sec = 0;
+    if(/^\d+$/.test(val)){
+      sec = parseInt(val); // 秒として扱う
+    } else if(/^\d+:\d{2}(:\d{2})?$/.test(val)){
+      const parts = val.split(':').map(Number);
+      sec = parts.length===3 ? parts[0]*3600+parts[1]*60+parts[2] : parts[0]*60+parts[1];
+    } else {
+      const h = val.match(/(\d+)\s*時間/); if(h) sec += parseInt(h[1])*3600;
+      const m = val.match(/(\d+)\s*分/);   if(m) sec += parseInt(m[1])*60;
+      const s = val.match(/(\d+)\s*秒/);   if(s) sec += parseInt(s[1]);
     }
-    el.textContent = '再試行';
-    el.style.pointerEvents = '';
-  } catch(err){
-    el.textContent = '再試行';
-    el.style.pointerEvents = '';
-  }
-}
 
-/* 秒を分単位で表示（例: 75秒→1:15、3723秒→1:02:03） */
+    if(sec > 0){
+      const span = document.createElement('span');
+      span.className = 'dp-dur';
+      span.textContent = fmtDuration(sec);
+      input.replaceWith(span);
+      follows.forEach(f=>{
+        (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration = sec; });
+      });
+      save();
+    } else {
+      input.replaceWith(el);
+    }
+  }
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e=>{
+    if(e.key==='Enter') commit();
+    if(e.key==='Escape'){ input.replaceWith(el); }
+  });
+}
 
 const SORT_LABELS = {
   'freq':          {icon:'📋', label:'頻度順'},
