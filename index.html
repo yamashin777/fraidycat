@@ -882,11 +882,37 @@ function setStatus(state, msg){
   document.getElementById('statusText').textContent = msg;
 }
 
-async function fetchFollow(f){
+/* 同時フェッチ数の上限 */
+const MAX_CONCURRENT = 3;
+let fetchQueue = [];
+let activeFetches = 0;
+
+function enqueueFetch(f){
+  if(f.loading) return;
+  if(fetchQueue.find(x=>x.id===f.id)) return;
+  fetchQueue.push(f);
+  drainQueue();
+}
+
+function drainQueue(){
+  while(activeFetches < MAX_CONCURRENT && fetchQueue.length > 0){
+    const f = fetchQueue.shift();
+    if(!f.loading) doFetch(f);
+  }
+}
+
+/* レンダリングのデバウンス（連続呼び出しをまとめる） */
+let renderTimer = null;
+function debouncedRender(){
+  if(renderTimer) clearTimeout(renderTimer);
+  renderTimer = setTimeout(()=>{ renderTimer=null; render(); }, 300);
+}
+
+async function doFetch(f){
   f.loading = true;
+  activeFetches++;
   loadingCount++;
   if(loadingCount===1) setStatus('loading', '更新中...');
-  render();
 
   try{
     const raw = await fetchRSSRaw(f.url);
@@ -894,13 +920,13 @@ async function fetchFollow(f){
     f.posts = posts;
     f.lastFetched = Date.now();
     f.error = null;
-    // update name if it was still default-ish and feed has a title
     if(feedTitle && f.name === f.url) f.name = feedTitle;
   }catch(e){
     f.error = `取得エラー: ${e.message}`;
     f.posts = f.posts || [];
   }finally{
     f.loading = false;
+    activeFetches--;
     loadingCount--;
     if(loadingCount===0){
       const errs = follows.filter(x=>x.error).length;
@@ -908,8 +934,15 @@ async function fetchFollow(f){
       else setStatus('ok', `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`);
     }
     save();
-    render();
+    debouncedRender();
+    drainQueue(); // 次のキューを処理
+    // APIキーがあれば動画時間を自動取得
+    if(ytApiKey) fetchDurationsForFollow(f);
   }
+}
+
+async function fetchFollow(f){
+  enqueueFetch(f);
 }
 
 function shouldRefetch(f){
@@ -918,10 +951,8 @@ function shouldRefetch(f){
 }
 
 async function refreshAll(){
-  // shouldRefetch に関係なく全チャンネルを強制更新
-  for(const f of follows){
-    if(!f.loading) fetchFollow(f);
-  }
+  // 全チャンネルをキューに追加（同時実行数は MAX_CONCURRENT に制限）
+  follows.forEach(f=>{ enqueueFetch(f); });
 }
 
 /* ── Render ── */
@@ -1054,16 +1085,10 @@ function renderDetail(f){
     ${f.posts.map(p=>{
       const dur = fmtDuration(p.duration);
       const dateStr = fmtDatetime(p.date);
-      const isYT = p.link && p.link.includes('youtube.com/watch');
-      const hasDur = p.duration !== null && p.duration > 0;
       return `<li class="dp-item">
         <div class="dp-dot"></div>
         ${dateStr ? `<span class="dp-date">${esc(dateStr)}</span>` : ''}
-        ${hasDur
-          ? `<span class="dp-dur">${esc(dur)}</span>`
-          : isYT
-            ? `<span class="dp-dur-fetch" onclick="fetchYTDuration(event,'${esc(p.link)}',this)">⏱取得</span>`
-            : ''}
+        ${dur ? `<span class="dp-dur">${esc(dur)}</span>` : ''}
         <a class="dp-link" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
       </li>`;
     }).join('')}
@@ -1074,32 +1099,6 @@ function renderDetail(f){
 function ytVideoId(url){
   const m = url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?]+)/);
   return m ? m[1] : null;
-}
-
-/* YouTube Data API v3で動画時間を取得 */
-async function fetchYTDuration(e, url, el){
-  e.stopPropagation();
-  if(!ytApiKey){
-    openApiKeyModal();
-    return;
-  }
-  el.textContent = '…';
-  el.style.pointerEvents = 'none';
-  const vid = ytVideoId(url);
-  if(!vid){ el.textContent = '⏱入力'; el.style.pointerEvents=''; return; }
-  try{
-    const sec = await fetchYTDurationById(vid);
-    if(sec > 0){
-      el.textContent = fmtDuration(sec);
-      el.className = 'dp-dur';
-      follows.forEach(f=>{ (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration=sec; }); });
-      save();
-    } else {
-      el.textContent = '⏱入力'; el.style.pointerEvents='';
-    }
-  }catch(err){
-    el.textContent = '⏱入力'; el.style.pointerEvents='';
-  }
 }
 
 /* 動画IDから秒数を返す */
@@ -1119,12 +1118,11 @@ async function fetchYTDurationById(videoId){
   return sec;
 }
 
-/* 新規登録フォローの全YouTube動画の時間を一括取得 */
+/* フォローのYouTube動画時間を自動取得（フィード取得後に呼ばれる） */
 async function fetchDurationsForFollow(f){
   if(!ytApiKey) return;
   const ytPosts = (f.posts||[]).filter(p=>p.link&&p.link.includes('youtube.com/watch')&&!p.duration);
   if(!ytPosts.length) return;
-  // 最大50件まで一括リクエスト
   const ids = ytPosts.map(p=>ytVideoId(p.link)).filter(Boolean);
   if(!ids.length) return;
   try{
@@ -1144,7 +1142,7 @@ async function fetchDurationsForFollow(f){
       f.posts.forEach(p=>{ if(ytVideoId(p.link)===item.id) p.duration=sec; });
     });
     save();
-    render();
+    debouncedRender();
   }catch(e){}
 }
 
@@ -1571,8 +1569,7 @@ function addFollow(){
   save();
   closeModal();
   render();
-  // RSSフェッチ後に動画時間を取得
-  fetchFollow(f).then(()=>{ if(ytApiKey) fetchDurationsForFollow(f); });
+  enqueueFetch(f);
 }
 
 function delFollow(e, id){
@@ -1714,9 +1711,7 @@ function execImport(){
 
   // 順番にフェッチ（一気に全部飛ばさず少し間隔を空ける）
   newFollows.forEach((f, i) => {
-    setTimeout(() => {
-      fetchFollow(f).then(()=>{ if(ytApiKey) fetchDurationsForFollow(f); });
-    }, i * 300);
+    setTimeout(() => enqueueFetch(f), i * 300);
   });
 }
 
@@ -1866,7 +1861,7 @@ function importJSON(event){
 }
 
 setInterval(()=>{
-  follows.forEach(f=>{ if(shouldRefetch(f) && !f.loading) fetchFollow(f); });
+  follows.forEach(f=>{ if(shouldRefetch(f)) enqueueFetch(f); });
 }, 60*1000);
 
 /* ── Boot ── */
@@ -1874,11 +1869,11 @@ load();
 render();
 setStatus('idle','準備完了');
 
-/* Initial fetch for loaded follows */
+/* 初回フェッチ: 1秒ごとに1チャンネルずつ順番に開始（負荷分散） */
 if(follows.length){
-  setTimeout(()=>{
-    follows.forEach(f=>{ if(shouldRefetch(f)) fetchFollow(f); });
-  }, 300);
+  follows.forEach((f, i)=>{
+    setTimeout(()=>{ if(shouldRefetch(f)) enqueueFetch(f); }, i * 1000);
+  });
 }
 </script>
 </body>
