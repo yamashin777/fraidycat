@@ -178,6 +178,22 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .sort-bar-btn:hover{border-color:var(--border-strong);color:var(--text)}
 .sort-bar-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
 
+/* ツールチップ */
+.hdr-btn{position:relative}
+.hdr-btn .tooltip{
+  display:none;position:absolute;top:calc(100% + 6px);right:0;
+  background:var(--text);color:var(--bg);
+  font-size:11px;padding:4px 8px;border-radius:5px;
+  white-space:nowrap;pointer-events:none;z-index:200;
+  font-family:'DM Sans',sans-serif;font-weight:400;
+  box-shadow:0 2px 8px rgba(0,0,0,0.2);
+}
+.hdr-btn .tooltip::before{
+  content:'';position:absolute;bottom:100%;right:12px;
+  border:4px solid transparent;border-bottom-color:var(--text);
+}
+.hdr-btn:hover .tooltip{display:block}
+
 /* スマホ対応メディアクエリ */
 @media(max-width:640px){
   .sidebar{display:none}
@@ -499,15 +515,15 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="logo">frady<span>cat</span></div>
   <div class="tags-scroll" id="tagsScroll"></div>
   <div class="hdr-actions">
-    <button class="hdr-btn" onclick="refreshAll()">↻ 更新</button>
-    <button class="hdr-btn" onclick="openImportModal()">↑ 一括インポート</button>
-    <button class="hdr-btn" onclick="exportJSON()">↓ エクスポート</button>
-    <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()">↑ インポート</button>
+    <button class="hdr-btn" onclick="refreshAll()">↻ 更新<span class="tooltip">全フィードを今すぐ更新</span></button>
+    <button class="hdr-btn" onclick="openImportModal()">↑ 一括インポート<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
+    <button class="hdr-btn" onclick="exportJSON()">↓ エクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
+    <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()">↑ インポート<span class="tooltip">JSONファイルからフォローデータを読み込み</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
-    <button class="hdr-btn" onclick="openBulkFreqModal()">⏱ 頻度一括変更</button>
-    <button class="hdr-btn" onclick="openApiKeyModal()">🔑 APIキー</button>
-    <button class="hdr-btn" onclick="bulkFetchDurations()">▶ 時間一括取得</button>
-    <button class="hdr-btn primary" onclick="openModal()">+ 追加</button>
+    <button class="hdr-btn" onclick="openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
+    <button class="hdr-btn" onclick="openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
+    <button class="hdr-btn" onclick="bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
+    <button class="hdr-btn primary" onclick="openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
   </div>
   <!-- スマホ用ハンバーガーボタンは削除（ボトムナビの☰から操作） -->
 </div>
@@ -515,10 +531,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <!-- PCソートバー -->
 <div class="sort-bar" id="sortBar">
   <span class="sort-bar-label">表示順：</span>
-  <button class="sort-bar-btn" id="pcSortFreq"    onclick="setSortMode('freq')">📋 頻度順</button>
-  <button class="sort-bar-btn" id="pcSortLatest"  onclick="setSortMode('latest')">🕐 新着順</button>
-  <button class="sort-bar-btn" id="pcSortDurDesc" onclick="setSortMode('duration-desc')">⏬ 長い順</button>
-  <button class="sort-bar-btn" id="pcSortDurAsc"  onclick="setSortMode('duration-asc')">⏫ 短い順</button>
+  <button class="sort-bar-btn" id="pcSortFreq"    onclick="setSortMode('freq')" title="チャンネルを更新頻度でグループ表示">📋 頻度順</button>
+  <button class="sort-bar-btn" id="pcSortLatest"  onclick="setSortMode('latest')" title="全動画を投稿日時の新しい順に表示">🕐 新着順</button>
+  <button class="sort-bar-btn" id="pcSortDurDesc" onclick="setSortMode('duration-desc')" title="再生時間の長い動画から順に表示">⏬ 長い順</button>
+  <button class="sort-bar-btn" id="pcSortDurAsc"  onclick="setSortMode('duration-asc')" title="再生時間の短い動画から順に表示">⏫ 短い順</button>
 </div>
 
 <!-- スマホ用ドロワーメニュー -->
@@ -647,7 +663,7 @@ let activeFreq = null;
 let expanded = null;
 let showModal = false;
 let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx:0};
-let sortMode = 'freq'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc'
+let sortMode = 'latest'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc'
 let ytApiKey = localStorage.getItem('fraidycat_yt_api_key') || '';
 let loadingCount = 0;
 
