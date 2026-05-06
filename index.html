@@ -531,7 +531,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <!-- PCソートバー -->
 <div class="sort-bar" id="sortBar">
   <span class="sort-bar-label">表示順：</span>
-  <button class="sort-bar-btn" id="pcSortFreq"    onclick="setSortMode('freq')" title="チャンネルを更新頻度でグループ表示">📋 頻度順</button>
+  <button class="sort-bar-btn" id="pcSortFreq"    onclick="setSortMode('freq')" title="全チャンネルを最新投稿日時の新しい順に表示">📋 チャンネル順</button>
   <button class="sort-bar-btn" id="pcSortLatest"  onclick="setSortMode('latest')" title="全動画を投稿日時の新しい順に表示">🕐 新着順</button>
   <button class="sort-bar-btn" id="pcSortDurDesc" onclick="setSortMode('duration-desc')" title="再生時間の長い動画から順に表示">⏬ 長い順</button>
   <button class="sort-bar-btn" id="pcSortDurAsc"  onclick="setSortMode('duration-asc')" title="再生時間の短い動画から順に表示">⏫ 短い順</button>
@@ -581,7 +581,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <div class="bottom-nav">
   <div class="bottom-nav-inner">
     <button class="bnav-btn" id="bnavFreq" onclick="setSortMode('freq')">
-      <span class="bnav-icon">📋</span>頻度順
+      <span class="bnav-icon">📋</span>CH順
     </button>
     <button class="bnav-btn" id="bnavLatest" onclick="setSortMode('latest')">
       <span class="bnav-icon">🕐</span>新着順
@@ -1279,7 +1279,7 @@ function saveApiKey(){
 }
 
 const SORT_LABELS = {
-  'freq':          {icon:'📋', label:'頻度順'},
+  'freq':          {icon:'📋', label:'チャンネル順'},
   'latest':        {icon:'🕐', label:'新着順'},
   'duration-desc': {icon:'⏬', label:'長い順'},
   'duration-asc':  {icon:'⏫', label:'短い順'},
@@ -1497,20 +1497,14 @@ function renderMain(){
   }
 
   if(sortMode === 'freq'){
-    // 頻度別グループ（グループ内は最新投稿日時の新しい順）
-    const grouped = {};
-    filtered.forEach(f=>{ if(!grouped[f.freq]) grouped[f.freq]=[]; grouped[f.freq].push(f); });
-    const orderedFreqs = FREQS.filter(fr=>grouped[fr]);
-    let html = '';
-    orderedFreqs.forEach(fr=>{
-      grouped[fr].sort((a,b)=>{
-        const da = a.posts?.[0]?.date || new Date(0);
-        const db = b.posts?.[0]?.date || new Date(0);
-        return db - da;
-      });
-      html += `<div class="group-label">${fr}</div>`;
-      grouped[fr].forEach(f=>{ html += renderFollowCard(f); });
+    // 全チャンネルを最新投稿日時でフラットにソート（グループなし）
+    filtered.sort((a,b)=>{
+      const da = a.posts?.[0]?.date || new Date(0);
+      const db = b.posts?.[0]?.date || new Date(0);
+      return db - da;
     });
+    let html = '';
+    filtered.forEach(f=>{ html += renderFollowCard(f); });
     main.innerHTML = html;
   } else {
     main.innerHTML = renderTimeline(filtered, sortMode);
