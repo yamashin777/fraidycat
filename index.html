@@ -1015,9 +1015,8 @@ function fmtDuration(sec){
   if(!sec || sec<=0) return '';
   const h = Math.floor(sec/3600);
   const m = Math.floor((sec%3600)/60);
-  const s = sec%60;
-  if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  return `${m}:${String(s).padStart(2,'0')}`;
+  if(h>0) return `${h}時間${m}分`;
+  return `${m}分`;
 }
 
 function renderDetail(f){
@@ -1051,76 +1050,36 @@ async function fetchYTDuration(e, url, el){
   el.style.pointerEvents = 'none';
 
   try{
-    let sec = 0;
-
-    // 方法1: noembed.com (CORSフリー・認証不要)
-    // 残念ながらdurationは返さないが試す
-    // 方法2: YouTube oEmbed も duration なし
-
-    // 方法3: alloriginsプロキシ経由でYouTubeページのHTMLを取得
-    // "lengthSeconds":"123" または "approxDurationMs":"123000" を探す
     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
     const res = await fetch(proxyUrl, {signal: AbortSignal.timeout(15000)});
-    if(res.ok){
-      const json = await res.json();
-      const html = json.contents || '';
+    if(!res.ok) throw new Error('proxy error');
+    const json = await res.json();
+    const html = json.contents || '';
 
-      // パターンA: "lengthSeconds":"1234"
-      const mA = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
-      if(mA) sec = parseInt(mA[1]);
-
-      // パターンB: "approxDurationMs":"123456"
-      if(!sec){
-        const mB = html.match(/"approxDurationMs"\s*:\s*"(\d+)"/);
-        if(mB) sec = Math.round(parseInt(mB[1]) / 1000);
-      }
-
-      // パターンC: <meta itemprop="duration" content="PT1H2M3S">
-      if(!sec){
-        const mC = html.match(/itemprop="duration"[^>]+content="PT([^"]+)"/);
-        if(!mC){ 
-          // 逆順でも試す
-          const mC2 = html.match(/content="PT([^"]+)"[^>]+itemprop="duration"/);
-          if(mC2){
-            const iso = mC2[1];
-            const hh = iso.match(/(\d+)H/); if(hh) sec += parseInt(hh[1])*3600;
-            const mm = iso.match(/(\d+)M/); if(mm) sec += parseInt(mm[1])*60;
-            const ss = iso.match(/(\d+)S/); if(ss) sec += parseInt(ss[1]);
-          }
-        } else {
-          const iso = mC[1];
-          const hh = iso.match(/(\d+)H/); if(hh) sec += parseInt(hh[1])*3600;
-          const mm = iso.match(/(\d+)M/); if(mm) sec += parseInt(mm[1])*60;
-          const ss = iso.match(/(\d+)S/); if(ss) sec += parseInt(ss[1]);
-        }
-      }
-
-      // パターンD: "duration":{"seconds":1234}
-      if(!sec){
-        const mD = html.match(/"duration"\s*:\s*\{\s*"seconds"\s*:\s*(\d+)/);
-        if(mD) sec = parseInt(mD[1]);
+    // "lengthSeconds":"1234" を抽出（秒単位）
+    const m = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
+    if(m){
+      const sec = parseInt(m[1]);
+      if(sec > 0){
+        el.textContent = fmtDuration(sec);
+        el.className = 'dp-dur';
+        el.style.pointerEvents = '';
+        follows.forEach(f=>{
+          (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration = sec; });
+        });
+        save();
+        return;
       }
     }
-
-    if(sec > 0){
-      el.textContent = fmtDuration(sec);
-      el.className = 'dp-dur';
-      el.style.pointerEvents = '';
-      // キャッシュ保存
-      follows.forEach(f=>{
-        (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration = sec; });
-      });
-      save();
-    } else {
-      // 取得できなかった場合はボタンを残す
-      el.textContent = '再試行';
-      el.style.pointerEvents = '';
-    }
+    el.textContent = '再試行';
+    el.style.pointerEvents = '';
   } catch(err){
     el.textContent = '再試行';
     el.style.pointerEvents = '';
   }
 }
+
+/* 秒を分単位で表示（例: 75秒→1:15、3723秒→1:02:03） */
 
 const SORT_LABELS = {
   'freq':          {icon:'📋', label:'頻度順'},
