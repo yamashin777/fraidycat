@@ -475,6 +475,27 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .bulk-summary{font-size:12px;color:var(--text-muted);margin-top:10px;min-height:18px}
 .bulk-summary b{color:var(--accent-mid)}
 
+/* 重複検出モーダル */
+.dup-group{border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden}
+.dup-group-header{background:var(--tag-bg);padding:6px 12px;font-size:12px;
+  color:var(--text-muted);font-family:'DM Mono',monospace;border-bottom:1px solid var(--border)}
+.dup-item{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  border-bottom:1px solid var(--border)}
+.dup-item:last-child{border-bottom:none}
+.dup-avatar{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;
+  justify-content:center;font-size:10px;font-weight:500;flex-shrink:0}
+.dup-name{flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dup-url{font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.dup-keep{font-size:11px;padding:2px 8px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--accent-mid);color:var(--accent-mid);background:transparent;
+  white-space:nowrap;transition:all 0.12s}
+.dup-keep.selected{background:var(--accent);border-color:var(--accent);color:#fff}
+.dup-delete{font-size:11px;padding:2px 8px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--border);color:var(--text-faint);background:transparent;
+  white-space:nowrap;transition:all 0.12s;text-decoration:line-through}
+.dup-no-dups{text-align:center;padding:2rem;color:var(--text-muted);font-size:14px}
+
 /* Import modal */
 .import-textarea{
   width:100%;height:160px;padding:8px 10px;
@@ -1844,6 +1865,156 @@ function execBulkFreq(){
   if(bulkFreqSelected === 'リアルタイム'){
     targets.forEach((f, i) => setTimeout(() => fetchFollow(f), i * 300));
   }
+}
+
+/* ── 重複検出・統合 ── */
+
+// 名前を正規化（記号・括弧・スペースを除去して比較用に）
+function normalizeName(name){
+  return name
+    .toLowerCase()
+    .replace(/[【】\[\]「」『』()（）・\-_\s]/g, '')
+    .replace(/[ａ-ｚＡ-Ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .trim();
+}
+
+// チャンネルIDをURLから抽出
+function ytChannelId(url){
+  const m = url.match(/channel_id=([A-Za-z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+// 重複グループを検出
+function detectDuplicates(){
+  const groups = [];
+  const used = new Set();
+
+  follows.forEach((f, i) => {
+    if(used.has(f.id)) return;
+    const group = [f];
+    const fNorm = normalizeName(f.name);
+    const fChId = ytChannelId(f.url);
+
+    follows.forEach((g, j) => {
+      if(i >= j || used.has(g.id)) return;
+      const gNorm = normalizeName(g.name);
+      const gChId = ytChannelId(g.url);
+
+      // 同じURL / 同じチャンネルID / 名前が80%以上一致
+      const sameUrl = f.url === g.url;
+      const sameChId = fChId && gChId && fChId === gChId;
+      const nameSimilar = fNorm.length > 3 && gNorm.length > 3 && (
+        fNorm.includes(gNorm) || gNorm.includes(fNorm) ||
+        similarity(fNorm, gNorm) >= 0.75
+      );
+
+      if(sameUrl || sameChId || nameSimilar){
+        group.push(g);
+      }
+    });
+
+    if(group.length > 1){
+      group.forEach(g => used.add(g.id));
+      groups.push(group);
+    }
+  });
+  return groups;
+}
+
+// 簡易文字列類似度（Dice係数）
+function similarity(a, b){
+  if(a === b) return 1;
+  if(a.length < 2 || b.length < 2) return 0;
+  const bigramsA = new Set();
+  for(let i = 0; i < a.length-1; i++) bigramsA.add(a[i]+a[i+1]);
+  let inter = 0;
+  for(let i = 0; i < b.length-1; i++){
+    const bg = b[i]+b[i+1];
+    if(bigramsA.has(bg)){ inter++; bigramsA.delete(bg); }
+  }
+  return (2 * inter) / (a.length - 1 + b.length - 1);
+}
+
+let dupGroups = [];
+let dupKeepIds = {}; // groupIndex -> keepId
+
+function openDuplicateModal(){
+  dupGroups = detectDuplicates();
+  // デフォルト: 各グループの先頭を残す
+  dupKeepIds = {};
+  dupGroups.forEach((g, i) => { dupKeepIds[i] = g[0].id; });
+  renderDuplicateModal();
+}
+
+function closeDuplicateModal(){
+  document.getElementById('modalContainer').innerHTML = '';
+}
+
+function renderDuplicateModal(){
+  const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+
+  let content = '';
+  if(dupGroups.length === 0){
+    content = `<div class="dup-no-dups">重複するチャンネルは見つかりませんでした ✓</div>`;
+  } else {
+    dupGroups.forEach((group, gi) => {
+      const c = colorOf(group[0]);
+      content += `<div class="dup-group">
+        <div class="dup-group-header">重複グループ ${gi+1} （${group.length}件）</div>`;
+      group.forEach(f => {
+        const col = colorOf(f);
+        const bg = isDark ? col.dark_bg : col.bg;
+        const fg = isDark ? col.dark_fg : col.fg;
+        const isKeep = dupKeepIds[gi] === f.id;
+        content += `<div class="dup-item">
+          <div class="dup-avatar" style="background:${bg};color:${fg}">${esc(f.initials)}</div>
+          <div style="flex:1;min-width:0">
+            <div class="dup-name">${esc(f.name)}</div>
+            <div class="dup-url">${esc(f.url)}</div>
+          </div>
+          <button class="${isKeep?'dup-keep selected':'dup-keep'}"
+            onclick="setDupKeep(${gi},${f.id})">残す</button>
+        </div>`;
+      });
+      content += `</div>`;
+    });
+  }
+
+  const deleteCount = dupGroups.reduce((sum, g) => sum + g.length - 1, 0);
+
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="closeDuplicateModal()">
+    <div class="modal" style="width:500px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
+      <h2>重複チャンネルの検出・統合</h2>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
+        「残す」を選んだチャンネルを残し、それ以外を削除します。
+      </div>
+      ${content}
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeDuplicateModal()">キャンセル</button>
+        ${dupGroups.length > 0 ? `<button class="btn-ok" onclick="execMerge()">
+          ${deleteCount}件を削除して統合
+        </button>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function setDupKeep(groupIdx, keepId){
+  dupKeepIds[groupIdx] = keepId;
+  renderDuplicateModal();
+}
+
+function execMerge(){
+  const keepIds = new Set(Object.values(dupKeepIds));
+  const deleteIds = new Set(
+    dupGroups.flatMap(g => g.map(f => f.id)).filter(id => !keepIds.has(id))
+  );
+  follows = follows.filter(f => !deleteIds.has(f.id));
+  if(expanded && deleteIds.has(expanded)) expanded = null;
+  save();
+  closeDuplicateModal();
+  render();
 }
 
 /* ── JSON Export / Import ── */
