@@ -505,6 +505,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()">↑ インポート</button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn" onclick="openBulkFreqModal()">⏱ 頻度一括変更</button>
+    <button class="hdr-btn" onclick="openApiKeyModal()">🔑 APIキー</button>
     <button class="hdr-btn primary" onclick="openModal()">+ 追加</button>
   </div>
   <!-- スマホ用ハンバーガーボタンは削除（ボトムナビの☰から操作） -->
@@ -533,6 +534,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <span class="drawer-icon">↻</span>すべて更新
   </button>
   <div class="drawer-title">データ</div>
+  <button class="drawer-btn" onclick="openApiKeyModal();closeDrawer()">
+    <span class="drawer-icon">🔑</span>YouTube APIキー設定
+  </button>
   <button class="drawer-btn" onclick="openBulkFreqModal();closeDrawer()">
     <span class="drawer-icon">⏱</span>頻度を一括変更
   </button>
@@ -640,6 +644,7 @@ let expanded = null;
 let showModal = false;
 let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx:0};
 let sortMode = 'freq'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc'
+let ytApiKey = localStorage.getItem('fraidycat_yt_api_key') || '';
 let loadingCount = 0;
 
 /* ── Storage ── */
@@ -1043,59 +1048,113 @@ function renderDetail(f){
   </ul>`;
 }
 
-/* YouTube動画の再生時間を手動入力 */
-function fetchYTDuration(e, url, el){
+/* YouTube動画IDをURLから抽出 */
+function ytVideoId(url){
+  const m = url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?]+)/);
+  return m ? m[1] : null;
+}
+
+/* YouTube Data API v3で動画時間を取得 */
+async function fetchYTDuration(e, url, el){
   e.stopPropagation();
-  // 入力欄に切り替え
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = '例: 12分 / 1:23:45';
-  input.style.cssText = `
-    font-size:11px;font-family:var(--font-mono,monospace);
-    width:90px;padding:1px 6px;border-radius:4px;
-    border:1px solid var(--accent-mid,#5A8C2E);
-    background:var(--color-background-primary,#fff);
-    color:var(--text,#1C1A16);outline:none;
-  `;
-  el.replaceWith(input);
-  input.focus();
-
-  function commit(){
-    const val = input.value.trim();
-    if(!val){ input.replaceWith(el); return; }
-
-    // パース: "12分" / "1時間23分" / "1:23:45" / "12:34" / "数字のみ(秒)"
-    let sec = 0;
-    if(/^\d+$/.test(val)){
-      sec = parseInt(val); // 秒として扱う
-    } else if(/^\d+:\d{2}(:\d{2})?$/.test(val)){
-      const parts = val.split(':').map(Number);
-      sec = parts.length===3 ? parts[0]*3600+parts[1]*60+parts[2] : parts[0]*60+parts[1];
-    } else {
-      const h = val.match(/(\d+)\s*時間/); if(h) sec += parseInt(h[1])*3600;
-      const m = val.match(/(\d+)\s*分/);   if(m) sec += parseInt(m[1])*60;
-      const s = val.match(/(\d+)\s*秒/);   if(s) sec += parseInt(s[1]);
-    }
-
+  if(!ytApiKey){
+    openApiKeyModal();
+    return;
+  }
+  el.textContent = '…';
+  el.style.pointerEvents = 'none';
+  const vid = ytVideoId(url);
+  if(!vid){ el.textContent = '⏱入力'; el.style.pointerEvents=''; return; }
+  try{
+    const sec = await fetchYTDurationById(vid);
     if(sec > 0){
-      const span = document.createElement('span');
-      span.className = 'dp-dur';
-      span.textContent = fmtDuration(sec);
-      input.replaceWith(span);
-      follows.forEach(f=>{
-        (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration = sec; });
-      });
+      el.textContent = fmtDuration(sec);
+      el.className = 'dp-dur';
+      follows.forEach(f=>{ (f.posts||[]).forEach(p=>{ if(p.link===url) p.duration=sec; }); });
       save();
     } else {
-      input.replaceWith(el);
+      el.textContent = '⏱入力'; el.style.pointerEvents='';
     }
+  }catch(err){
+    el.textContent = '⏱入力'; el.style.pointerEvents='';
   }
+}
 
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', e=>{
-    if(e.key==='Enter') commit();
-    if(e.key==='Escape'){ input.replaceWith(el); }
-  });
+/* 動画IDから秒数を返す */
+async function fetchYTDurationById(videoId){
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoId}&key=${ytApiKey}`,
+    {signal: AbortSignal.timeout(10000)}
+  );
+  if(!res.ok) throw new Error(`API error ${res.status}`);
+  const json = await res.json();
+  const dur = json.items?.[0]?.contentDetails?.duration; // "PT1H23M45S"
+  if(!dur) return 0;
+  let sec = 0;
+  const h = dur.match(/(\d+)H/); if(h) sec += parseInt(h[1])*3600;
+  const m = dur.match(/(\d+)M/); if(m) sec += parseInt(m[1])*60;
+  const s = dur.match(/(\d+)S/); if(s) sec += parseInt(s[1]);
+  return sec;
+}
+
+/* 新規登録フォローの全YouTube動画の時間を一括取得 */
+async function fetchDurationsForFollow(f){
+  if(!ytApiKey) return;
+  const ytPosts = (f.posts||[]).filter(p=>p.link&&p.link.includes('youtube.com/watch')&&!p.duration);
+  if(!ytPosts.length) return;
+  // 最大50件まで一括リクエスト
+  const ids = ytPosts.map(p=>ytVideoId(p.link)).filter(Boolean);
+  if(!ids.length) return;
+  try{
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids.join(',')}&key=${ytApiKey}&maxResults=50`,
+      {signal: AbortSignal.timeout(15000)}
+    );
+    if(!res.ok) return;
+    const json = await res.json();
+    (json.items||[]).forEach(item=>{
+      const dur = item.contentDetails?.duration;
+      if(!dur) return;
+      let sec = 0;
+      const h = dur.match(/(\d+)H/); if(h) sec += parseInt(h[1])*3600;
+      const m = dur.match(/(\d+)M/); if(m) sec += parseInt(m[1])*60;
+      const s = dur.match(/(\d+)S/); if(s) sec += parseInt(s[1]);
+      f.posts.forEach(p=>{ if(ytVideoId(p.link)===item.id) p.duration=sec; });
+    });
+    save();
+    render();
+  }catch(e){}
+}
+
+/* APIキー設定モーダル */
+function openApiKeyModal(){
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="closeApiKeyModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h2>YouTube APIキー設定</h2>
+      <div class="form-row">
+        <label class="form-label">APIキー</label>
+        <input class="form-input" id="apiKeyInput" type="text"
+          value="${esc(ytApiKey)}" placeholder="AIza...">
+        <div class="form-hint">
+          Google Cloud Consoleで発行した YouTube Data API v3 のキーを入力してください。
+          1日1万回まで無料です。
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeApiKeyModal()">キャンセル</button>
+        <button class="btn-ok" onclick="saveApiKey()">保存</button>
+      </div>
+    </div>
+  </div>`;
+}
+function closeApiKeyModal(){ document.getElementById('modalContainer').innerHTML=''; }
+function saveApiKey(){
+  const key = document.getElementById('apiKeyInput').value.trim();
+  ytApiKey = key;
+  localStorage.setItem('fraidycat_yt_api_key', key);
+  closeApiKeyModal();
+  setStatus('ok', 'APIキーを保存しました');
 }
 
 const SORT_LABELS = {
@@ -1418,7 +1477,8 @@ function addFollow(){
   save();
   closeModal();
   render();
-  fetchFollow(f);
+  // RSSフェッチ後に動画時間を取得
+  fetchFollow(f).then(()=>{ if(ytApiKey) fetchDurationsForFollow(f); });
 }
 
 function delFollow(e, id){
@@ -1560,7 +1620,9 @@ function execImport(){
 
   // 順番にフェッチ（一気に全部飛ばさず少し間隔を空ける）
   newFollows.forEach((f, i) => {
-    setTimeout(() => fetchFollow(f), i * 300);
+    setTimeout(() => {
+      fetchFollow(f).then(()=>{ if(ytApiKey) fetchDurationsForFollow(f); });
+    }, i * 300);
   });
 }
 
