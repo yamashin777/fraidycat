@@ -918,8 +918,9 @@ function shouldRefetch(f){
 }
 
 async function refreshAll(){
+  // shouldRefetch に関係なく全チャンネルを強制更新
   for(const f of follows){
-    if(shouldRefetch(f)) fetchFollow(f);
+    if(!f.loading) fetchFollow(f);
   }
 }
 
@@ -941,7 +942,8 @@ function renderFollowCard(f){
   const latestPost = f.posts?.[0];
   const snippet = latestPost ? latestPost.title : (f.error ? '⚠ エラー' : '記事なし');
   const pillClass = FREQ_PILL[f.freq] || '';
-  const agoText = latestPost?.date ? relativeTime(latestPost.date) : '';
+  // 右端は「最終取得時刻」を表示
+  const agoText = f.lastFetched ? relativeTime(new Date(f.lastFetched)) : '未取得';
 
   // 頻度セレクター（展開時に表示）
   const freqSelector = `
@@ -969,7 +971,7 @@ function renderFollowCard(f){
       <div class="fc-right">
         ${f.loading ? '<div class="fc-spinner"></div>' : ''}
         <span class="freq-pill ${pillClass}">${f.freq}</span>
-        <span class="fc-ago">${agoText}</span>
+        <span class="fc-ago" title="最終取得時刻">${agoText}</span>
         <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
       </div>
     </div>
