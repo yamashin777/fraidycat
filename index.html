@@ -942,8 +942,8 @@ function renderFollowCard(f){
   const latestPost = f.posts?.[0];
   const snippet = latestPost ? latestPost.title : (f.error ? '⚠ エラー' : '記事なし');
   const pillClass = FREQ_PILL[f.freq] || '';
-  // 右端は「最終取得時刻」を表示
-  const agoText = f.lastFetched ? relativeTime(new Date(f.lastFetched)) : '未取得';
+  // 右端は「最新投稿の日時」を表示
+  const agoText = latestPost?.date ? relativeTime(latestPost.date) : (f.lastFetched ? '記事なし' : '未取得');
 
   // 頻度セレクター（展開時に表示）
   const freqSelector = `
@@ -971,7 +971,7 @@ function renderFollowCard(f){
       <div class="fc-right">
         ${f.loading ? '<div class="fc-spinner"></div>' : ''}
         <span class="freq-pill ${pillClass}">${f.freq}</span>
-        <span class="fc-ago" title="最終取得時刻">${agoText}</span>
+        <span class="fc-ago" title="最新投稿日時">${agoText}</span>
         <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
       </div>
     </div>
@@ -1465,12 +1465,17 @@ function renderMain(){
   }
 
   if(sortMode === 'freq'){
-    // 頻度別グループ
+    // 頻度別グループ（グループ内は最新投稿日時の新しい順）
     const grouped = {};
     filtered.forEach(f=>{ if(!grouped[f.freq]) grouped[f.freq]=[]; grouped[f.freq].push(f); });
     const orderedFreqs = FREQS.filter(fr=>grouped[fr]);
     let html = '';
     orderedFreqs.forEach(fr=>{
+      grouped[fr].sort((a,b)=>{
+        const da = a.posts?.[0]?.date || new Date(0);
+        const db = b.posts?.[0]?.date || new Date(0);
+        return db - da;
+      });
       html += `<div class="group-label">${fr}</div>`;
       grouped[fr].forEach(f=>{ html += renderFollowCard(f); });
     });
