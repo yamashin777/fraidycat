@@ -734,7 +734,7 @@ let activeTag = 'すべて';
 let activeFreq = null;
 let expanded = null;
 let showModal = false;
-let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx:0};
+let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',memo:'',colorIdx:0};
 let sortMode = 'latest'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc' | 'registered-desc' | 'registered-asc'
 let ytApiKey = localStorage.getItem('fraidycat_yt_api_key') || '';
 let loadingCount = 0;
@@ -1703,7 +1703,7 @@ function renderMain(){
 /* ── Modal ── */
 function openModal(){
   showModal = true;
-  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
+  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',memo:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
   renderModal();
 }
 function closeModal(){ showModal=false; document.getElementById('modalContainer').innerHTML=''; }
@@ -1751,6 +1751,13 @@ function renderModal(){
           oninput="formData.tags=this.value" placeholder="例: tech, news, 読み物">
       </div>
       <div class="form-row">
+        <label class="form-label">メモ（任意）</label>
+        <textarea class="form-input" id="f-memo" rows="2"
+          oninput="formData.memo=this.value"
+          placeholder="このチャンネルに関するメモや備考..."
+          style="resize:vertical;line-height:1.5">${esc(formData.memo)}</textarea>
+      </div>
+      <div class="form-row">
         <label class="form-label">カラー</label>
         <div class="color-row">${swatches}</div>
       </div>
@@ -1767,6 +1774,7 @@ function addFollow(){
   const name = document.getElementById('f-name').value.trim() || url;
   if(!url){ alert('URLは必須です'); return; }
   const tags = splitTags(document.getElementById('f-tags').value);
+  const memo = document.getElementById('f-memo')?.value.trim() || '';
   const initials = name.split(/[\s\/\-_]+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || '??';
   const f = {
     id: Date.now(),
@@ -1777,6 +1785,7 @@ function addFollow(){
     tags: tags.length ? tags : ['一般'],
     colorIdx: formData.colorIdx,
     initials,
+    memo,
     posts: [],
     loading: false,
     lastFetched: null,
