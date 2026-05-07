@@ -1119,22 +1119,22 @@ function renderFollowCard(f){
       <span class="fc-freq-label">チャンネル名：</span>
       <input class="fc-tag-input" id="name-input-${f.id}"
         value="${esc(f.name)}"
-        placeholder="チャンネル名を入力"
+        placeholder="チャンネル名"
         title="チャンネル名を編集できます"
-        onchange="changeName(${f.id}, this.value)">
-      <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画" style="cursor:help;text-decoration:underline dotted;margin-left:8px">タグ：</span>
+        onchange="changeName(${f.id}, this.value)"
+        style="max-width:180px">
+      <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます" style="cursor:help;text-decoration:underline dotted;margin-left:4px">タグ：</span>
       <input class="fc-tag-input" id="tag-input-${f.id}"
         value="${esc(f.tags.join(', '))}"
-        placeholder="例: キャンプ, アウトドア"
+        placeholder="例: キャンプ, tech"
         title="カンマ・半角スペース・全角スペースで区切って複数入力できます"
-        onchange="changeTag(${f.id}, this.value)"
-        style="max-width:200px">
+        onchange="changeTag(${f.id}, this.value)">
     </div>
-    <div class="fc-memo-row" onclick="event.stopPropagation()">
+    <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">メモ：</span>
       <input class="fc-tag-input" id="memo-input-${f.id}"
         value="${esc(f.memo||'')}"
-        placeholder="このチャンネルに関するメモや備考..."
+        placeholder="メモや備考..."
         onchange="changeMemo(${f.id}, this.value)">
     </div>`;
 
@@ -1149,7 +1149,6 @@ function renderFollowCard(f){
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 ${esc(f.memo)}</span>` : ''}
         </div>
-        <div class="fc-snippet">${esc(snippet)}</div>
       </div>
       <div class="fc-right">
         ${f.loading ? '<div class="fc-spinner"></div>' : ''}
