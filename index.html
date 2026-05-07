@@ -871,7 +871,7 @@ function parseRSS(raw){
     const {feed, items} = raw.rss2json;
     return {
       feedTitle: feed?.title || '',
-      posts: (items||[]).slice(0,10).map(it=>({
+      posts: (items||[]).slice(0,5).map(it=>({
         title: it.title || '(無題)',
         link: it.link || '#',
         date: it.pubDate ? new Date(it.pubDate) : null,
@@ -956,7 +956,7 @@ function parseRSS(raw){
   }
 
   posts.sort((a,b)=> (b.date||0) - (a.date||0));
-  return {feedTitle, posts: posts.slice(0,10)};
+  return {feedTitle, posts: posts.slice(0,5)};
 }
 
 /* ── Auto-detect feed name from URL ── */
@@ -1009,7 +1009,7 @@ function setStatus(state, msg){
 }
 
 /* 同時フェッチ数の上限 */
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 2; // 484件対応で同時実行数を削減
 let fetchQueue = [];
 let activeFetches = 0;
 
@@ -1031,7 +1031,7 @@ function drainQueue(){
 let renderTimer = null;
 function debouncedRender(){
   if(renderTimer) clearTimeout(renderTimer);
-  renderTimer = setTimeout(()=>{ renderTimer=null; render(); }, 300);
+  renderTimer = setTimeout(()=>{ renderTimer=null; render(); }, 800);
 }
 
 async function doFetch(f){
@@ -2347,19 +2347,27 @@ function importJSON(event){
 }
 
 setInterval(()=>{
+  // 5分ごとにチェック（60秒から延長）
   follows.forEach(f=>{ if(shouldRefetch(f)) enqueueFetch(f); });
-}, 60*1000);
+}, 5 * 60 * 1000);
 
 /* ── Boot ── */
 load();
 render();
 setStatus('idle','準備完了');
 
-/* 初回フェッチ: 1秒ごとに1チャンネルずつ順番に開始（負荷分散） */
+/* 初回フェッチ: キューに順番に追加（setTimeoutを大量生成しない） */
 if(follows.length){
-  follows.forEach((f, i)=>{
-    setTimeout(()=>{ if(shouldRefetch(f)) enqueueFetch(f); }, i * 1000);
-  });
+  // shouldRefetchのものだけキューに積む（一気には積まず少しずつ）
+  const toFetch = follows.filter(f => shouldRefetch(f));
+  let idx = 0;
+  function scheduleNext(){
+    if(idx >= toFetch.length) return;
+    enqueueFetch(toFetch[idx++]);
+    // キューが空くのを待ってから次を追加（2秒間隔）
+    setTimeout(scheduleNext, 2000);
+  }
+  setTimeout(scheduleNext, 1000); // 1秒後に開始
 }
 </script>
 </body>
