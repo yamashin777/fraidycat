@@ -357,6 +357,18 @@ body{display:flex;flex-direction:column;min-height:100vh}
   -webkit-tap-highlight-color:transparent;
 }
 .fc-copy-btn:hover{background:var(--tag-bg);color:var(--text)}
+.fc-cal-btn{
+  flex-shrink:0;background:none;border:none;cursor:pointer;
+  padding:2px 4px;border-radius:4px;font-size:13px;line-height:1;
+  color:var(--text-faint);transition:all 0.12s;
+  -webkit-tap-highlight-color:transparent;
+}
+.fc-cal-btn:hover{background:var(--tag-bg);color:var(--text)}
+.fc-regdate-popup{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 14px;background:var(--accent-light);
+  border-top:1px solid var(--border);flex-wrap:wrap;
+}
 .fc-url-text{
   flex:1;font-size:11px;font-family:'DM Mono',monospace;
   color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;
@@ -773,6 +785,8 @@ function load(){
     if(!Array.isArray(parsed)) return;
     follows = parsed.map(f=>({
       ...f,
+      // registeredAt未設定の場合はidをフォールバックとして使用（登録順は維持）
+      registeredAt: f.registeredAt || f.id || Date.now(),
       posts: (f.posts||[]).map(p=>({
         ...p,
         // 文字列で保存されたdateをDateオブジェクトに復元
@@ -1124,7 +1138,17 @@ function renderFollowCard(f){
         ${f.loading ? '<div class="fc-spinner"></div>' : ''}
         <span class="freq-pill ${pillClass}">${f.freq}</span>
         <span class="fc-ago" title="最新投稿日時">${agoText}</span>
+        <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})"
+          title="${f.registeredAt ? '登録日: ' + new Date(f.registeredAt).toLocaleDateString('ja-JP') : '登録日を設定'}">📅</button>
         <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
+      </div>
+      <div class="fc-regdate-popup" id="regdate-popup-${f.id}" style="display:none" onclick="event.stopPropagation()">
+        <span class="fc-freq-label">登録日：</span>
+        <input type="date" class="fc-tag-input"
+          value="${f.registeredAt ? new Date(f.registeredAt).toISOString().slice(0,10) : ''}"
+          onchange="changeRegDate(${f.id}, this.value)"
+          style="max-width:160px">
+        <button class="fc-copy-btn" onclick="toggleRegDateInput(event,${f.id})">✕</button>
       </div>
     </div>
     <div class="fc-detail">
@@ -1132,6 +1156,18 @@ function renderFollowCard(f){
       ${renderDetail(f)}
     </div>
   </div>`;
+}
+
+function toggleRegDateInput(e, id){
+  e.stopPropagation();
+  const popup = document.getElementById(`regdate-popup-${id}`);
+  if(!popup) return;
+  const isVisible = popup.style.display !== 'none';
+  popup.style.display = isVisible ? 'none' : 'flex';
+  if(!isVisible){
+    // 日付入力欄にフォーカス
+    popup.querySelector('input[type="date"]')?.focus();
+  }
 }
 
 function copyText(text, btn){
