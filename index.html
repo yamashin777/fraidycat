@@ -1820,6 +1820,47 @@ function tlCard(p, mode){
   </div>`;
 }
 
+/* 仮想スクロール用ページング */
+let currentPage = 0;
+const PAGE_SIZE = 30; // 一度に表示する件数
+let currentFiltered = []; // 現在のフィルター済みリスト
+
+function renderChannelList(list, append=false){
+  const main = document.getElementById('main');
+  if(!append){
+    main.innerHTML = '';
+    currentPage = 0;
+  }
+  const start = currentPage * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  const chunk = list.slice(start, end);
+
+  let html = chunk.map(f=>renderFollowCard(f)).join('');
+
+  // 続きがあればロードボタンを追加
+  if(end < list.length){
+    html += `<div id="load-more" style="text-align:center;padding:1rem">
+      <button class="hdr-btn" onclick="loadMoreChannels()" style="font-size:13px;padding:8px 20px">
+        さらに表示（残り${list.length - end}件）
+      </button>
+    </div>`;
+  }
+
+  if(append){
+    // ロードボタンを置き換えて追記
+    const loadMore = document.getElementById('load-more');
+    if(loadMore) loadMore.outerHTML = html;
+    else main.insertAdjacentHTML('beforeend', html);
+  } else {
+    main.innerHTML = html;
+  }
+  currentPage++;
+}
+
+function loadMoreChannels(){
+  renderChannelList(currentFiltered, true);
+}
+
 function renderMain(){
   const main = document.getElementById('main');
   let filtered = follows.filter(f=>{
@@ -1841,25 +1882,21 @@ function renderMain(){
   }
 
   if(sortMode === 'freq'){
-    // 全チャンネルを最新投稿日時でフラットにソート（グループなし）
     filtered.sort((a,b)=>{
       const da = a.posts?.[0]?.date || new Date(0);
       const db = b.posts?.[0]?.date || new Date(0);
       return db - da;
     });
-    let html = '';
-    filtered.forEach(f=>{ html += renderFollowCard(f); });
-    main.innerHTML = html;
+    currentFiltered = filtered;
+    renderChannelList(filtered);
   } else if(sortMode === 'registered-desc' || sortMode === 'registered-asc'){
-    // 登録日順（チャンネルカード表示）
     filtered.sort((a,b)=>{
       const da = a.registeredAt || a.id;
       const db = b.registeredAt || b.id;
       return sortMode === 'registered-desc' ? db - da : da - db;
     });
-    let html = '';
-    filtered.forEach(f=>{ html += renderFollowCard(f); });
-    main.innerHTML = html;
+    currentFiltered = filtered;
+    renderChannelList(filtered);
   } else {
     main.innerHTML = renderTimeline(filtered, sortMode);
   }
