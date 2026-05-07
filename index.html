@@ -402,15 +402,16 @@ body{display:flex;flex-direction:column;min-height:100vh}
   cursor:default;
 }
 .fc-memo-row{
-  display:flex;align-items:flex-start;gap:8px;
-  padding:6px 12px 10px;background:var(--bg);
+  display:flex;align-items:center;gap:8px;
+  padding:6px 12px;background:var(--bg);
+  border-top:1px solid var(--border);
 }
 .fc-memo-input{
-  flex:1;min-height:60px;font-size:12px;padding:6px 8px;
+  flex:1;font-size:12px;padding:4px 8px;
   border:1px solid var(--border-strong);border-radius:6px;
   background:var(--surface);color:var(--text);
   font-family:'DM Sans',sans-serif;outline:none;resize:none;
-  line-height:1.5;
+  line-height:1.5;height:28px;
 }
 .fc-memo-input:focus{border-color:var(--accent)}
 .fc-memo-badge{
@@ -1115,26 +1116,26 @@ function renderFollowCard(f){
     <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">チャンネル名：</span>
     <div class="fc-tag-row" onclick="event.stopPropagation()">
-      <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画" style="cursor:help;text-decoration:underline dotted">タグ：</span>
-      <input class="fc-tag-input" id="tag-input-${f.id}"
-        value="${esc(f.tags.join(', '))}"
-        placeholder="例: キャンプ, アウトドア 動画（カンマ・スペース区切り）"
-        title="カンマ・半角スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画"
-        onchange="changeTag(${f.id}, this.value)">
-    </div>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">チャンネル名：</span>
       <input class="fc-tag-input" id="name-input-${f.id}"
         value="${esc(f.name)}"
         placeholder="チャンネル名を入力"
         title="チャンネル名を編集できます"
         onchange="changeName(${f.id}, this.value)">
+      <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画" style="cursor:help;text-decoration:underline dotted;margin-left:8px">タグ：</span>
+      <input class="fc-tag-input" id="tag-input-${f.id}"
+        value="${esc(f.tags.join(', '))}"
+        placeholder="例: キャンプ, アウトドア"
+        title="カンマ・半角スペース・全角スペースで区切って複数入力できます"
+        onchange="changeTag(${f.id}, this.value)"
+        style="max-width:200px">
     </div>
     <div class="fc-memo-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">メモ：</span>
-      <textarea class="fc-memo-input" id="memo-input-${f.id}"
-        placeholder="このチャンネルに関するメモや備考を入力..."
-        onchange="changeMemo(${f.id}, this.value)">${esc(f.memo||'')}</textarea>
+      <input class="fc-tag-input" id="memo-input-${f.id}"
+        value="${esc(f.memo||'')}"
+        placeholder="このチャンネルに関するメモや備考..."
+        onchange="changeMemo(${f.id}, this.value)">
     </div>`;
 
   return `
@@ -1221,6 +1222,12 @@ function changeMemo(id, val){
   if(!f) return;
   f.memo = val.trim();
   save();
+  // カード上のメモインライン表示を更新
+  const memoEl = document.querySelector(`#fc-${id} .fc-memo-inline`);
+  if(memoEl){
+    if(f.memo){ memoEl.textContent = '📝 ' + f.memo; memoEl.style.display=''; }
+    else memoEl.style.display='none';
+  }
 }
 
 function changeRegDate(id, val){
@@ -1855,10 +1862,10 @@ function renderModal(){
       </div>
       <div class="form-row">
         <label class="form-label">メモ（任意）</label>
-        <textarea class="form-input" id="f-memo" rows="2"
+        <textarea class="form-input" id="f-memo" rows="1"
           oninput="formData.memo=this.value"
           placeholder="このチャンネルに関するメモや備考..."
-          style="resize:vertical;line-height:1.5">${esc(formData.memo)}</textarea>
+          style="resize:none;line-height:1.5">${esc(formData.memo)}</textarea>
       </div>
       <div class="form-row">
         <label class="form-label">カラー</label>
