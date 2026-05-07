@@ -1104,17 +1104,6 @@ function renderFollowCard(f){
         title="カンマ・半角スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画"
         onchange="changeTag(${f.id}, this.value)">
     </div>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
-      <span class="fc-freq-label" title="登録日時を手動で設定できます" style="cursor:help;text-decoration:underline dotted">登録日：</span>
-      <input class="fc-tag-input" id="regdate-input-${f.id}"
-        type="date"
-        value="${f.registeredAt ? new Date(f.registeredAt).toISOString().slice(0,10) : ''}"
-        title="登録日を編集できます"
-        onchange="changeRegDate(${f.id}, this.value)"
-        style="max-width:160px">
-      ${!f.registeredAt ? '<span style="font-size:11px;color:var(--text-faint);margin-left:4px">← 日付を設定してください</span>' : ''}
-    </div>
-    <div class="fc-memo-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">メモ：</span>
       <textarea class="fc-memo-input" id="memo-input-${f.id}"
         placeholder="このチャンネルに関するメモや備考を入力..."
