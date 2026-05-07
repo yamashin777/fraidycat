@@ -424,6 +424,24 @@ body{display:flex;flex-direction:column;min-height:100vh}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   flex:1;min-width:0;
 }
+/* 動画プレビューリスト */
+.fc-preview{
+  display:flex;flex-direction:column;gap:2px;margin-top:4px;
+}
+.fc-preview-item{
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;min-width:0;
+}
+.fc-preview-date{
+  font-size:10px;font-family:'DM Mono',monospace;
+  color:var(--text-faint);white-space:nowrap;flex-shrink:0;
+}
+.fc-preview-title{
+  color:var(--text-muted);text-decoration:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  flex:1;min-width:0;
+}
+.fc-preview-title:hover{color:var(--accent);text-decoration:underline}
 .fc-reg-date{
   font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint);
   white-space:nowrap;flex-shrink:0;
@@ -1149,6 +1167,22 @@ function renderFollowCard(f){
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 ${esc(f.memo)}</span>` : ''}
         </div>
+        ${(f.posts||[]).length > 0 ? `
+        <div class="fc-preview">
+          ${(f.posts||[]).slice(0,3).map(p=>{
+            const dur = fmtDuration(p.duration);
+            const isShort = p.link && p.link.includes('/shorts/');
+            const isLive = dur==='Live'||isLiveTitle(p.title);
+            const durText = isLive?'Live':isShort?`[ショート]${dur?' '+dur:''}`:dur;
+            const durAttr = isLive?' data-live="true"':isShort?' data-short="true"':'';
+            const dateStr = fmtDatetime(p.date);
+            return `<div class="fc-preview-item">
+              ${dateStr?`<span class="fc-preview-date">${esc(dateStr)}</span>`:''}
+              ${durText?`<span class="dp-dur"${durAttr}>${esc(durText)}</span>`:''}
+              <a class="fc-preview-title" href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(p.title)}</a>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
       </div>
       <div class="fc-right">
         ${f.loading ? '<div class="fc-spinner"></div>' : ''}
