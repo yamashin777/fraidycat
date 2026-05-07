@@ -350,6 +350,18 @@ body{display:flex;flex-direction:column;min-height:100vh}
   font-family:'DM Sans',sans-serif;outline:none;
 }
 .fc-tag-input:focus{border-color:var(--accent)}
+.fc-copy-btn{
+  flex-shrink:0;background:none;border:none;cursor:pointer;
+  padding:2px 6px;border-radius:4px;font-size:13px;line-height:1;
+  color:var(--text-faint);transition:all 0.12s;
+  -webkit-tap-highlight-color:transparent;
+}
+.fc-copy-btn:hover{background:var(--tag-bg);color:var(--text)}
+.fc-url-text{
+  flex:1;font-size:11px;font-family:'DM Mono',monospace;
+  color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0;
+}
 .fc-memo-row{
   display:flex;align-items:flex-start;gap:8px;
   padding:6px 12px 10px;background:var(--bg);
@@ -1047,11 +1059,6 @@ function renderFollowCard(f){
   const pillClass = FREQ_PILL[f.freq] || '';
   const agoText = latestPost?.date ? relativeTime(latestPost.date) : (f.lastFetched ? '記事なし' : '未取得');
 
-  // 登録日表示
-  const regDate = f.registeredAt
-    ? new Date(f.registeredAt).toLocaleDateString('ja-JP',{year:'numeric',month:'short',day:'numeric'})
-    : '不明';
-
   // 頻度セレクター＋タグ編集（展開時に表示）
   const freqSelector = `
     <div class="fc-freq-row" onclick="event.stopPropagation()">
@@ -1071,13 +1078,27 @@ function renderFollowCard(f){
         onchange="changeName(${f.id}, this.value)">
     </div>
     <div class="fc-tag-row" onclick="event.stopPropagation()">
+      <span class="fc-freq-label">URL：</span>
+      <span class="fc-url-text">${esc(f.url)}</span>
+      <button class="fc-copy-btn" onclick="copyText('${esc(f.url)}', this)" title="URLをコピー">📋</button>
+    </div>
+    <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画" style="cursor:help;text-decoration:underline dotted">タグ：</span>
       <input class="fc-tag-input" id="tag-input-${f.id}"
         value="${esc(f.tags.join(', '))}"
         placeholder="例: キャンプ, アウトドア 動画（カンマ・スペース区切り）"
         title="カンマ・半角スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画"
         onchange="changeTag(${f.id}, this.value)">
-      <span class="fc-reg-date">📅 ${regDate}</span>
+    </div>
+    <div class="fc-tag-row" onclick="event.stopPropagation()">
+      <span class="fc-freq-label" title="登録日時を手動で設定できます" style="cursor:help;text-decoration:underline dotted">登録日：</span>
+      <input class="fc-tag-input" id="regdate-input-${f.id}"
+        type="date"
+        value="${f.registeredAt ? new Date(f.registeredAt).toISOString().slice(0,10) : ''}"
+        title="登録日を編集できます"
+        onchange="changeRegDate(${f.id}, this.value)"
+        style="max-width:160px">
+      ${!f.registeredAt ? '<span style="font-size:11px;color:var(--text-faint);margin-left:4px">← 日付を設定してください</span>' : ''}
     </div>
     <div class="fc-memo-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">メモ：</span>
@@ -1113,6 +1134,22 @@ function renderFollowCard(f){
   </div>`;
 }
 
+function copyText(text, btn){
+  navigator.clipboard.writeText(text).then(()=>{
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    btn.style.color = 'var(--accent-mid)';
+    setTimeout(()=>{ btn.textContent = orig; btn.style.color = ''; }, 1500);
+  }).catch(()=>{
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    btn.textContent = '✓';
+    setTimeout(()=>{ btn.textContent = '📋'; }, 1500);
+  });
+}
+
 function changeName(id, val){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
@@ -1132,6 +1169,20 @@ function changeMemo(id, val){
   if(!f) return;
   f.memo = val.trim();
   save();
+}
+
+function changeRegDate(id, val){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  if(!val){ f.registeredAt = null; save(); return; }
+  // 日付文字列をタイムスタンプに変換（その日の0時0分として保存）
+  const d = new Date(val);
+  if(isNaN(d.getTime())) return;
+  f.registeredAt = d.getTime();
+  save();
+  // ヒントメッセージを消す
+  const hint = document.querySelector(`#fc-${id} #regdate-input-${id} + span`);
+  if(hint) hint.remove();
 }
 
 function changeFreq(id, freq){
