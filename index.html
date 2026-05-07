@@ -77,6 +77,21 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .hdr-btn:hover{background:var(--tag-bg);color:var(--text)}
 .hdr-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .hdr-btn.primary:hover{opacity:0.88}
+/* ヘッダーボタンの色区分 */
+.hdr-btn.data{
+  border-color:#5A7A9A;color:#5A7A9A;
+}
+.hdr-btn.data:hover{background:#EBF2F8;color:#2A4A6A}
+.hdr-btn.api{
+  border-color:#7A5A9A;color:#7A5A9A;
+}
+.hdr-btn.api:hover{background:#F0EBF8;color:#4A2A6A}
+@media(prefers-color-scheme:dark){
+  .hdr-btn.data{border-color:#6A9ABE;color:#6A9ABE}
+  .hdr-btn.data:hover{background:#1A2A3A;color:#8ABADE}
+  .hdr-btn.api{border-color:#9A6ABE;color:#9A6ABE}
+  .hdr-btn.api:hover{background:#2A1A3A;color:#BAAADE}
+}
 /* ハンバーガーメニューボタン（スマホのみ表示） */
 .menu-btn{
   display:none;width:40px;height:40px;border-radius:8px;
@@ -374,6 +389,12 @@ body{display:flex;flex-direction:column;min-height:100vh}
   color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;min-width:0;
 }
+.fc-url-inline{
+  font-size:10px;font-family:'DM Mono',monospace;
+  color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:200px;flex-shrink:1;
+  cursor:default;
+}
 .fc-memo-row{
   display:flex;align-items:flex-start;gap:8px;
   padding:6px 12px 10px;background:var(--bg);
@@ -610,13 +631,13 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="tags-scroll" id="tagsScroll"></div>
   <div class="hdr-actions">
     <button class="hdr-btn" onclick="refreshAll()">↻ 更新<span class="tooltip">全フィードを今すぐ更新</span></button>
-    <button class="hdr-btn" onclick="openImportModal()">↑ 一括インポート<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
-    <button class="hdr-btn" onclick="exportJSON()">↓ エクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
-    <button class="hdr-btn" onclick="document.getElementById('importJsonFile').click()">↑ インポート<span class="tooltip">JSONファイルからフォローデータを読み込み</span></button>
+    <button class="hdr-btn data" onclick="openImportModal()">↑ 一括インポート<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
+    <button class="hdr-btn data" onclick="exportJSON()">↓ エクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
+    <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()">↑ インポート<span class="tooltip">JSONファイルからフォローデータを読み込み</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
-    <button class="hdr-btn" onclick="openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
-    <button class="hdr-btn" onclick="openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
-    <button class="hdr-btn" onclick="bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
+    <button class="hdr-btn api" onclick="openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
+    <button class="hdr-btn api" onclick="openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
+    <button class="hdr-btn api" onclick="bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
     <button class="hdr-btn primary" onclick="openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
   </div>
   <!-- スマホ用ハンバーガーボタンは削除（ボトムナビの☰から操作） -->
@@ -1082,6 +1103,18 @@ function renderFollowCard(f){
           onclick="changeFreq(${f.id},'${fr}')">${fr}</button>`).join('')}
       </div>
       <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}))">↻ 今すぐ更新</button>
+      <span class="fc-url-inline" title="${esc(f.url)}">${esc(f.url.length>40 ? f.url.slice(0,40)+'…' : f.url)}</span>
+      <button class="fc-copy-btn" onclick="copyText('${esc(f.url)}', this)" title="URLをコピー">📋</button>
+    </div>
+    <div class="fc-tag-row" onclick="event.stopPropagation()">
+      <span class="fc-freq-label">チャンネル名：</span>
+    <div class="fc-tag-row" onclick="event.stopPropagation()">
+      <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画" style="cursor:help;text-decoration:underline dotted">タグ：</span>
+      <input class="fc-tag-input" id="tag-input-${f.id}"
+        value="${esc(f.tags.join(', '))}"
+        placeholder="例: キャンプ, アウトドア 動画（カンマ・スペース区切り）"
+        title="カンマ・半角スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画"
+        onchange="changeTag(${f.id}, this.value)">
     </div>
     <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">チャンネル名：</span>
@@ -1091,19 +1124,7 @@ function renderFollowCard(f){
         title="チャンネル名を編集できます"
         onchange="changeName(${f.id}, this.value)">
     </div>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
-      <span class="fc-freq-label">URL：</span>
-      <span class="fc-url-text">${esc(f.url)}</span>
-      <button class="fc-copy-btn" onclick="copyText('${esc(f.url)}', this)" title="URLをコピー">📋</button>
-    </div>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
-      <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画" style="cursor:help;text-decoration:underline dotted">タグ：</span>
-      <input class="fc-tag-input" id="tag-input-${f.id}"
-        value="${esc(f.tags.join(', '))}"
-        placeholder="例: キャンプ, アウトドア 動画（カンマ・スペース区切り）"
-        title="カンマ・半角スペース・全角スペースで区切って複数入力できます&#10;例: キャンプ, アウトドア 動画"
-        onchange="changeTag(${f.id}, this.value)">
-    </div>
+    <div class="fc-memo-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">メモ：</span>
       <textarea class="fc-memo-input" id="memo-input-${f.id}"
         placeholder="このチャンネルに関するメモや備考を入力..."
