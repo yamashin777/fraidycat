@@ -141,15 +141,15 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .layout{display:flex;flex:1;min-height:0}
 .sidebar{
   width:220px;flex-shrink:0;border-right:1px solid var(--border);
-  padding:1.25rem 0;overflow-y:auto;
+  padding:0.5rem 0;overflow-y:auto;
   background:var(--surface);
 }
 .sb-section{font-size:10px;font-family:'DM Mono',monospace;font-weight:500;
   letter-spacing:0.1em;color:var(--text-faint);
-  padding:0 1.25rem;margin:1rem 0 0.4rem;text-transform:uppercase}
+  padding:0 1.25rem;margin:0.5rem 0 0.25rem;text-transform:uppercase}
 .sb-btn{
   display:flex;align-items:center;gap:8px;width:100%;
-  padding:8px 1.25rem;background:none;border:none;
+  padding:6px 1.25rem;background:none;border:none;
   font-size:13px;color:var(--text-muted);cursor:pointer;text-align:left;
   transition:all 0.12s;border-left:2px solid transparent;
   -webkit-tap-highlight-color:transparent;
@@ -161,6 +161,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
   background:var(--border-strong);
 }
 .sb-count{margin-left:auto;font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint)}
+.sb-total{
+  font-size:11px;color:var(--text-faint);padding:6px 1.25rem 4px;
+  border-bottom:0.5px solid var(--border);margin-bottom:2px;
+}
 
 /* Main */
 .main{flex:1;overflow-y:auto;padding:1rem}
@@ -1773,7 +1777,8 @@ function renderSidebar(){
   const sb = document.getElementById('sidebar');
   const freqCounts = {};
   follows.forEach(f=>{ freqCounts[f.freq] = (freqCounts[f.freq]||0)+1; });
-  let html = `<div class="sb-section">頻度</div>`;
+  let html = `<div class="sb-total">計 ${follows.length}件</div>`;
+  html += `<div class="sb-section">頻度</div>`;
   FREQS.forEach(fr=>{
     const cnt = freqCounts[fr] || 0;
     if(!cnt) return;
@@ -1902,11 +1907,15 @@ let currentPage = 0;
 const PAGE_SIZE = 30; // 一度に表示する件数
 let currentFiltered = []; // 現在のフィルター済みリスト
 
+let infiniteScrollObserver = null;
+
 function renderChannelList(list, append=false){
   const main = document.getElementById('main');
   if(!append){
     main.innerHTML = '';
     currentPage = 0;
+    // 既存のObserverを解除
+    if(infiniteScrollObserver){ infiniteScrollObserver.disconnect(); infiniteScrollObserver=null; }
   }
   const start = currentPage * PAGE_SIZE;
   const end = start + PAGE_SIZE;
@@ -1914,24 +1923,36 @@ function renderChannelList(list, append=false){
 
   let html = chunk.map(f=>renderFollowCard(f)).join('');
 
-  // 続きがあればロードボタンを追加
+  // 続きがあればセンチネル要素を追加（ボタンの代わり）
   if(end < list.length){
-    html += `<div id="load-more" style="text-align:center;padding:1rem">
-      <button class="hdr-btn" onclick="loadMoreChannels()" style="font-size:13px;padding:8px 20px">
-        さらに表示（残り${list.length - end}件）
-      </button>
+    html += `<div id="scroll-sentinel" style="height:40px;display:flex;align-items:center;justify-content:center">
+      <div class="fc-spinner"></div>
     </div>`;
   }
 
   if(append){
-    // ロードボタンを置き換えて追記
-    const loadMore = document.getElementById('load-more');
-    if(loadMore) loadMore.outerHTML = html;
+    const sentinel = document.getElementById('scroll-sentinel');
+    if(sentinel) sentinel.outerHTML = html;
     else main.insertAdjacentHTML('beforeend', html);
   } else {
     main.innerHTML = html;
   }
   currentPage++;
+
+  // 次のページがあればIntersectionObserverをセット
+  if(end < list.length){
+    const sentinel = document.getElementById('scroll-sentinel');
+    if(sentinel){
+      infiniteScrollObserver = new IntersectionObserver(entries=>{
+        if(entries[0].isIntersecting){
+          infiniteScrollObserver.disconnect();
+          infiniteScrollObserver = null;
+          renderChannelList(list, true);
+        }
+      }, {root: main, rootMargin:'100px'});
+      infiniteScrollObserver.observe(sentinel);
+    }
+  }
 }
 
 function loadMoreChannels(){
