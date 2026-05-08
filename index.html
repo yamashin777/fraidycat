@@ -464,7 +464,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .fc-preview-title{
   color:var(--accent-mid);text-decoration:underline;text-underline-offset:2px;
   overflow:hidden;text-overflow:ellipsis;
-  min-width:0;width:100%;
+  min-width:0;max-width:100%;
   /* スマホでは折り返して2行まで表示 */
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
   white-space:normal;line-height:1.4;
@@ -473,7 +473,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   .fc-preview-item{flex-direction:row;align-items:center;gap:6px;}
   .fc-preview-meta{flex-shrink:0;}
   .fc-preview-title{
-    white-space:nowrap;display:block;-webkit-line-clamp:unset;flex:1;
+    white-space:nowrap;display:inline;-webkit-line-clamp:unset;
   }
 }
 .fc-preview-title:hover{color:var(--accent);}
