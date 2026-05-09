@@ -1746,17 +1746,24 @@ function openDrawer(){
   const drawerTags = document.getElementById('drawerTags');
   if(drawerTags){
     const allTagsList = [...new Set(follows.flatMap(f=>f.tags))].sort();
-    drawerTags.innerHTML = [
-      `<button class="drawer-btn${activeTag==='すべて'?' primary':''}" onclick="setTag('すべて');closeDrawer()" style="padding:8px 12px;font-size:13px">
-        <span class="drawer-icon">🏷</span>すべて（${follows.length}）
-      </button>`,
-      ...allTagsList.map(t=>{
-        const cnt = follows.filter(f=>f.tags.includes(t)).length;
-        return `<button class="drawer-btn${activeTag===t?' primary':''}" onclick="setTag('${t}');closeDrawer()" style="padding:8px 12px;font-size:13px">
-          <span class="drawer-icon">🏷</span>${t}（${cnt}）
-        </button>`;
-      })
-    ].join('');
+    const items = [
+      {tag:'すべて', cnt: follows.length},
+      ...allTagsList.map(t=>({tag:t, cnt: follows.filter(f=>f.tags.includes(t)).length}))
+    ];
+    drawerTags.innerHTML = items.map(({tag, cnt})=>
+      `<button class="drawer-btn${activeTag===tag?' primary':''}"
+        data-tag="${esc(tag)}"
+        style="padding:8px 12px;font-size:13px">
+        <span class="drawer-icon">🏷</span>${esc(tag)}（${cnt}）
+      </button>`
+    ).join('');
+    // イベントをdelegationで設定
+    drawerTags.onclick = e=>{
+      const btn = e.target.closest('button[data-tag]');
+      if(!btn) return;
+      setTag(btn.dataset.tag);
+      closeDrawer();
+    };
   }
 }
 function closeDrawer(){
