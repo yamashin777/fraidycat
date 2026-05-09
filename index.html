@@ -295,7 +295,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .fc-avatar[data-mark="red"]   {border-color:#E00;box-shadow:0 0 0 1px #E00;}
 .fc-avatar[data-mark="blue"]  {border-color:#07C;box-shadow:0 0 0 1px #07C;}
 .fc-avatar[data-mark="green"] {border-color:#080;box-shadow:0 0 0 1px #080;}
-.fc-avatar[data-mark="yellow"]{border-color:#B80;box-shadow:0 0 0 1px #B80;}
+.fc-avatar[data-mark="yellow"]{border-color:#E6B800;box-shadow:0 0 0 1px #E6B800;}
 .fc-avatar img{
   width:100%;height:100%;object-fit:cover;border-radius:5px;
   position:absolute;inset:0;
@@ -432,7 +432,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .fc-fav-btn[data-mark="red"]   {color:#E00;}
 .fc-fav-btn[data-mark="blue"]  {color:#07C;}
 .fc-fav-btn[data-mark="green"] {color:#080;}
-.fc-fav-btn[data-mark="yellow"]{color:#B80;}
+.fc-fav-btn[data-mark="yellow"]{color:#E6B800;}
 .mark-popup{
   position:absolute;right:0;top:calc(100% + 4px);
   background:var(--surface);border:1px solid var(--border);
@@ -894,7 +894,7 @@ const MARK_COLORS = {
   red:    {border:'#E00', bg:'#FFE5E5', label:'赤'},
   blue:   {border:'#07C', bg:'#E5F4FF', label:'青'},
   green:  {border:'#080', bg:'#E5FFE8', label:'緑'},
-  yellow: {border:'#B80', bg:'#FFFBE5', label:'黄'},
+  yellow: {border:'#E6B800', bg:'#FFFBE5', label:'黄'},
 };
 const FREQ_PILL = {
   'リアルタイム':'fp-rt','毎日':'fp-daily','毎週':'fp-weekly',
@@ -1971,7 +1971,7 @@ function renderSidebar(){
     html += `<div class="sb-section" style="margin-top:0.5rem">状態</div>`;
     if(favoriteCount > 0){
       html += `<button class="sb-btn${activeTag==='__favorite__'?' active':''}" onclick="setTag('__favorite__')">
-        <div class="sb-dot" style="background:linear-gradient(135deg,#E00 25%,#07C 25%,#07C 50%,#080 50%,#080 75%,#B80 75%)"></div>マーク済み
+        <div class="sb-dot" style="background:linear-gradient(135deg,#E00 25%,#07C 25%,#07C 50%,#080 50%,#080 75%,#E6B800 75%)"></div>マーク済み
         <span class="sb-count">${favoriteCount}</span>
       </button>`;
     }
