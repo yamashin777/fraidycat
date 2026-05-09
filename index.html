@@ -1127,11 +1127,11 @@ const MAX_CONCURRENT = 2; // 484件対応で同時実行数を削減
 let fetchQueue = [];
 let activeFetches = 0;
 
-function enqueueFetch(f){
+function enqueueFetch(f, countable=true){
   if(f.loading) return;
   if(fetchQueue.find(x=>x.id===f.id)) return;
   fetchQueue.push(f);
-  fetchTotal++;
+  if(countable) fetchTotal++;
   drainQueue();
 }
 
@@ -1187,13 +1187,22 @@ async function fetchFollow(f){
 }
 
 function shouldRefetch(f){
+  if(f.suspended) return false;
   if(!f.lastFetched) return true;
   return Date.now() - f.lastFetched > FREQ_INTERVAL[f.freq];
 }
 
 async function refreshAll(){
-  fetchTotal = 0; fetchDone = 0;
-  follows.forEach(f=>{ enqueueFetch(f); });
+  const targets = follows.filter(f=>!f.suspended);
+  fetchTotal = targets.length;
+  fetchDone = 0;
+  setStatus('loading', `更新中 0/${fetchTotal}（0%）`);
+  targets.forEach(f=>{
+    if(f.loading) return;
+    if(fetchQueue.find(x=>x.id===f.id)) return;
+    fetchQueue.push(f);
+  });
+  drainQueue();
 }
 
 /* ── Render ── */
@@ -1224,7 +1233,8 @@ function renderFollowCard(f){
         ${FREQS.map(fr=>`<button class="fc-freq-btn${f.freq===fr?' active':''}"
           onclick="changeFreq(${f.id},'${fr}')">${fr}</button>`).join('')}
       </div>
-      <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}))">↻ 今すぐ更新</button>
+      <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}),false)">↻ 今すぐ更新</button>
+      ${f.suspended ? `<button class="fc-refresh-btn" style="color:var(--accent-mid);border-color:var(--accent-mid)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=false;save();render()">▶ 更新を再開</button>` : `<button class="fc-refresh-btn" style="color:var(--text-faint)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=true;save();render()">⏸ 更新外にする</button>`}
       <span class="fc-url-inline" title="${esc(f.url)}">${esc(f.url)}</span>
       <button class="fc-copy-btn" onclick="copyText('${esc(f.url)}', this)" title="URLをコピー">📋</button>
     </div>
@@ -1277,6 +1287,7 @@ function renderFollowCard(f){
         <div class="fc-top">
           <span class="fc-name">${esc(f.name)}</span>
           <span class="fc-platform">${esc(f.platform)}</span>
+          ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 ${esc(f.memo)}</span>` : ''}
         </div>
@@ -2689,7 +2700,7 @@ function importJSON(event){
 
 setInterval(()=>{
   // 5分ごとにチェック（60秒から延長）
-  follows.forEach(f=>{ if(shouldRefetch(f)) enqueueFetch(f); });
+  follows.forEach(f=>{ if(shouldRefetch(f)) enqueueFetch(f, false); });
 }, 5 * 60 * 1000);
 
 /* エラー一覧表示 */
@@ -2701,20 +2712,20 @@ function showErrorList(){
     <div class="modal" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
       <h2>取得エラー（${errs.length}件）</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
-        エラーが続く場合はURLを確認するか、チャンネルを削除してください
+        「更新外」にするとチャンネルを残したまま自動更新をスキップします
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         ${errs.map(f=>`
           <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
               <span style="font-size:13px;font-weight:500">${esc(f.name)}</span>
               <button class="btn-cancel" style="margin-left:auto;font-size:11px;padding:2px 8px"
-                onclick="enqueueFetch(follows.find(x=>x.id===${f.id}));document.getElementById('modalContainer').innerHTML=''">
+                onclick="clearErrorAndRetry(${f.id})">
                 再試行
               </button>
-              <button class="btn-cancel" style="font-size:11px;padding:2px 8px;color:var(--danger)"
-                onclick="follows=follows.filter(x=>x.id!==${f.id});save();render();document.getElementById('modalContainer').innerHTML=''">
-                削除
+              <button class="btn-cancel" style="font-size:11px;padding:2px 8px;color:var(--accent-mid);border-color:var(--accent-mid)"
+                onclick="suspendFollow(${f.id})">
+                更新外にする
               </button>
             </div>
             <div style="font-size:11px;color:var(--danger);font-family:var(--font-mono,monospace)">${esc(f.error||'')}</div>
@@ -2723,13 +2734,42 @@ function showErrorList(){
         `).join('')}
       </div>
       <div class="modal-actions">
-        <button class="btn-ok" onclick="errs.forEach(f=>enqueueFetch(f));document.getElementById('modalContainer').innerHTML=''">
-          全件再試行
+        <button class="btn-ok" onclick="suspendAllErrors()">
+          全件を更新外にする
         </button>
+        <button class="btn-cancel" onclick="errs.forEach(f=>clearErrorAndRetry(f.id))">全件再試行</button>
         <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">閉じる</button>
       </div>
     </div>
   </div>`;
+}
+
+function clearErrorAndRetry(id){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  f.error = null;
+  f.suspended = false;
+  save();
+  enqueueFetch(f, false);
+  document.getElementById('modalContainer').innerHTML='';
+  render();
+}
+
+function suspendFollow(id){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  f.suspended = true;
+  f.error = null;
+  save();
+  document.getElementById('modalContainer').innerHTML='';
+  render();
+}
+
+function suspendAllErrors(){
+  follows.forEach(f=>{ if(f.error){ f.suspended=true; f.error=null; } });
+  save();
+  document.getElementById('modalContainer').innerHTML='';
+  render();
 }
 
 /* ── Boot ── */
@@ -2743,7 +2783,7 @@ if(follows.length){
   let idx = 0;
   function scheduleNext(){
     if(idx >= toFetch.length) return;
-    enqueueFetch(toFetch[idx++]);
+    enqueueFetch(toFetch[idx++], false);
     setTimeout(scheduleNext, 2000);
   }
   setTimeout(scheduleNext, 1000);
