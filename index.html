@@ -1802,6 +1802,8 @@ function closeDrawer(){
   document.body.style.overflow='';
 }
 
+let skipScrollRestore = false;
+
 function render(){
   const main = document.getElementById('main');
   const scrollTop = main ? main.scrollTop : 0;
@@ -1809,7 +1811,8 @@ function render(){
   renderMain();
   renderTags();
   updateSortBtn();
-  if(main) requestAnimationFrame(()=>{ main.scrollTop = scrollTop; });
+  if(main && !skipScrollRestore) requestAnimationFrame(()=>{ main.scrollTop = scrollTop; });
+  skipScrollRestore = false;
 }
 
 function toggleSort(){
@@ -2189,7 +2192,40 @@ function delFollow(e, id){
   render();
 }
 
-function toggleExpand(id){ expanded = expanded===id ? null : id; render(); }
+function toggleExpand(id){
+  const main = document.getElementById('main');
+  const prevScrollTop = main ? main.scrollTop : 0;
+
+  // 閉じる場合は展開前のカード位置を記憶
+  const prevCard = expanded === id ? document.getElementById(`fc-${id}`) : null;
+  const prevCardTop = prevCard ? prevCard.getBoundingClientRect().top : 0;
+
+  skipScrollRestore = true;
+  expanded = expanded === id ? null : id;
+  render();
+
+  if(!main) return;
+
+  if(expanded === id){
+    // 展開した場合：カードが見えるようにスクロール
+    requestAnimationFrame(()=>{
+      const card = document.getElementById(`fc-${id}`);
+      if(card){
+        const cardRect = card.getBoundingClientRect();
+        const mainRect = main.getBoundingClientRect();
+        // カードが画面外なら見える位置に移動
+        if(cardRect.top < mainRect.top || cardRect.bottom > mainRect.bottom){
+          card.scrollIntoView({behavior:'smooth', block:'nearest'});
+        }
+      }
+    });
+  } else {
+    // 閉じた場合：スクロール位置を維持
+    requestAnimationFrame(()=>{
+      main.scrollTop = prevScrollTop;
+    });
+  }
+}
 function setTag(t){ activeTag=t; render(); }
 function setFreq(f){ activeFreq=f; render(); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
