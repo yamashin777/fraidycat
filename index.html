@@ -231,6 +231,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   .sidebar{display:none}
   .hdr-actions{display:none}
   .sort-bar{display:none}
+  .menu-btn{display:flex}
   .bottom-nav{display:block}
   .main{padding:0.75rem;padding-bottom:calc(80px + max(8px, env(safe-area-inset-bottom)))}
   .header{padding:0 0.75rem;height:48px}
@@ -717,7 +718,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <button class="hdr-btn api" onclick="bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
     <button class="hdr-btn primary" onclick="openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
   </div>
-  <!-- スマホ用ハンバーガーボタンは削除（ボトムナビの☰から操作） -->
+  <!-- ハンバーガーボタン（スマホ・Brave等で表示） -->
+  <button class="menu-btn" onclick="openDrawer()" aria-label="メニュー">
+    <span></span><span></span><span></span>
+  </button>
 </div>
 
 <!-- PCソートバー -->
@@ -868,15 +872,22 @@ let loadingCount = 0;
 let fetchTotal = 0;   // 今回の更新バッチの総件数
 let fetchDone = 0;    // 完了件数
 
+let currentFetchingName = ''; // 現在取得中のチャンネル名
+
 function updateFetchStatus(){
   if(loadingCount === 0){
     const errs = follows.filter(x=>x.error).length;
     if(errs) setStatus('err', `${errs}件のエラー`);
     else setStatus('ok', `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`);
-    fetchTotal = 0; fetchDone = 0;
+    fetchTotal = 0; fetchDone = 0; currentFetchingName = '';
   } else {
-    const pct = fetchTotal > 0 ? ` ${fetchDone}/${fetchTotal}` : '';
-    setStatus('loading', `更新中${pct}`);
+    if(fetchTotal > 0){
+      const pct = Math.round(fetchDone / fetchTotal * 100);
+      const name = currentFetchingName ? ` — ${currentFetchingName}` : '';
+      setStatus('loading', `更新中 ${fetchDone}/${fetchTotal}（${pct}%）${name}`);
+    } else {
+      setStatus('loading', '更新中...');
+    }
   }
 }
 
@@ -1128,6 +1139,7 @@ async function doFetch(f){
   f.loading = true;
   activeFetches++;
   loadingCount++;
+  currentFetchingName = f.name.length > 20 ? f.name.slice(0, 20) + '…' : f.name;
   updateFetchStatus();
 
   try{
@@ -1757,11 +1769,12 @@ function openDrawer(){
         <span class="drawer-icon">🏷</span>${esc(tag)}（${cnt}）
       </button>`
     ).join('');
-    // イベントをdelegationで設定
+    // イベントをdelegationで設定（Safari対応）
     drawerTags.onclick = e=>{
-      const btn = e.target.closest('button[data-tag]');
-      if(!btn) return;
-      setTag(btn.dataset.tag);
+      const btn = e.target.closest ? e.target.closest('button[data-tag]') : null;
+      const tag = btn ? btn.getAttribute('data-tag') : null;
+      if(!tag) return;
+      setTag(tag);
       closeDrawer();
     };
   }
