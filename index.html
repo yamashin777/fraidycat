@@ -292,9 +292,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
   overflow:hidden;position:relative;
   border:2px solid transparent;transition:border-color 0.15s;
 }
-.fc-avatar.favorite{
-  border-color:#E00;box-shadow:0 0 0 1px #E00;
-}
+.fc-avatar[data-mark="red"]   {border-color:#E00;box-shadow:0 0 0 1px #E00;}
+.fc-avatar[data-mark="blue"]  {border-color:#07C;box-shadow:0 0 0 1px #07C;}
+.fc-avatar[data-mark="green"] {border-color:#080;box-shadow:0 0 0 1px #080;}
+.fc-avatar[data-mark="yellow"]{border-color:#B80;box-shadow:0 0 0 1px #B80;}
 .fc-avatar img{
   width:100%;height:100%;object-fit:cover;border-radius:5px;
   position:absolute;inset:0;
@@ -425,10 +426,30 @@ body{display:flex;flex-direction:column;min-height:100vh}
   flex-shrink:0;background:none;border:none;cursor:pointer;
   padding:2px 4px;border-radius:4px;font-size:16px;line-height:1;
   color:var(--text-faint);transition:all 0.12s;
-  -webkit-tap-highlight-color:transparent;
+  -webkit-tap-highlight-color:transparent;position:relative;
 }
-.fc-fav-btn:hover{color:#E00;}
-.fc-fav-btn.active{color:#E00;}
+.fc-fav-btn:hover{color:var(--text);}
+.fc-fav-btn[data-mark="red"]   {color:#E00;}
+.fc-fav-btn[data-mark="blue"]  {color:#07C;}
+.fc-fav-btn[data-mark="green"] {color:#080;}
+.fc-fav-btn[data-mark="yellow"]{color:#B80;}
+.mark-popup{
+  position:absolute;right:0;top:calc(100% + 4px);
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:8px;z-index:200;
+  display:flex;gap:6px;align-items:center;
+  box-shadow:0 4px 16px rgba(0,0,0,0.15);
+}
+.mark-color-btn{
+  width:22px;height:22px;border-radius:50%;border:2px solid transparent;
+  cursor:pointer;transition:transform 0.1s;flex-shrink:0;
+}
+.mark-color-btn:hover{transform:scale(1.2);}
+.mark-clear-btn{
+  font-size:11px;padding:2px 6px;border-radius:6px;
+  background:var(--tag-bg);border:1px solid var(--border);
+  color:var(--text-muted);cursor:pointer;white-space:nowrap;
+}
 .fc-regdate-popup{
   display:flex;align-items:center;gap:8px;
   padding:6px 14px;background:var(--accent-light);
@@ -869,6 +890,12 @@ const COLORS = [
 ];
 
 const FREQS = ['リアルタイム','毎日','毎週','毎月','毎年'];
+const MARK_COLORS = {
+  red:    {border:'#E00', bg:'#FFE5E5', label:'赤'},
+  blue:   {border:'#07C', bg:'#E5F4FF', label:'青'},
+  green:  {border:'#080', bg:'#E5FFE8', label:'緑'},
+  yellow: {border:'#B80', bg:'#FFFBE5', label:'黄'},
+};
 const FREQ_PILL = {
   'リアルタイム':'fp-rt','毎日':'fp-daily','毎週':'fp-weekly',
   '毎月':'fp-monthly','毎年':'fp-yearly'
@@ -1291,7 +1318,7 @@ function renderFollowCard(f){
   return `
   <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}">
     <div class="fc-row" onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup'))toggleExpand(${f.id})">
-      <div class="fc-avatar${f.favorite?' favorite':''}" style="background:${bg};color:${fg}">
+      <div class="fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
         ${f.iconUrl ? `<img src="${esc(f.iconUrl)}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
         ${f.initials}
       </div>
@@ -1325,7 +1352,7 @@ function renderFollowCard(f){
         ${f.loading ? '<div class="fc-spinner"></div>' : ''}
         <span class="freq-pill ${pillClass}">${f.freq}</span>
         <span class="fc-ago" title="最新投稿日時">${agoText}</span>
-        <button class="fc-fav-btn${f.favorite?' active':''}" onclick="toggleFavorite(event,${f.id})" title="${f.favorite?'お気に入りを解除':'お気に入りに追加'}">${f.favorite?'★':'☆'}</button>
+        <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
         <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})"
           title="${f.registeredAt ? '登録日: ' + new Date(f.registeredAt).toLocaleDateString('ja-JP') : '登録日を設定'}">📅</button>
         <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
@@ -1346,22 +1373,69 @@ function renderFollowCard(f){
   </div>`;
 }
 
-function toggleFavorite(e, id){
+function openMarkPopup(e, id){
   e.stopPropagation();
+  // 既存のポップアップを閉じる
+  document.querySelectorAll('.mark-popup').forEach(el=>el.remove());
+
+  const btn = e.currentTarget;
   const f = follows.find(x=>x.id===id);
   if(!f) return;
-  f.favorite = !f.favorite;
+
+  const popup = document.createElement('div');
+  popup.className = 'mark-popup';
+  popup.onclick = ev=>ev.stopPropagation();
+
+  Object.entries(MARK_COLORS).forEach(([key, val])=>{
+    const cb = document.createElement('button');
+    cb.className = 'mark-color-btn';
+    cb.style.background = val.border;
+    cb.title = val.label;
+    if(f.markColor===key) cb.style.outline = `2px solid ${val.border}`;
+    cb.onclick = ()=>{ setMark(id, key); popup.remove(); };
+    popup.appendChild(cb);
+  });
+
+  // 解除ボタン
+  if(f.markColor){
+    const clr = document.createElement('button');
+    clr.className = 'mark-clear-btn';
+    clr.textContent = '解除';
+    clr.onclick = ()=>{ setMark(id, null); popup.remove(); };
+    popup.appendChild(clr);
+  }
+
+  btn.style.position = 'relative';
+  btn.appendChild(popup);
+
+  // 外クリックで閉じる
+  setTimeout(()=>{
+    document.addEventListener('click', function close(){
+      popup.remove();
+      document.removeEventListener('click', close);
+    }, {once:true});
+  }, 0);
+}
+
+function setMark(id, color){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  f.markColor = color || null;
+  // favorite フラグと同期（サイドバーフィルター用）
+  f.favorite = !!color;
   save();
+  // アバターとボタンを即時更新
   const avatar = document.querySelector(`#fc-${id} .fc-avatar`);
-  if(avatar) avatar.classList.toggle('favorite', f.favorite);
+  if(avatar) avatar.setAttribute('data-mark', color||'');
   const btn = document.querySelector(`#fc-${id} .fc-fav-btn`);
   if(btn){
-    btn.textContent = f.favorite ? '★' : '☆';
-    btn.classList.toggle('active', f.favorite);
-    btn.title = f.favorite ? 'お気に入りを解除' : 'お気に入りに追加';
+    btn.setAttribute('data-mark', color||'');
+    btn.textContent = color ? '★' : '☆';
   }
   renderSidebar();
 }
+
+function toggleFavorite(e, id){ openMarkPopup(e, id); } // 後方互換
 
 function toggleRegDateInput(e, id){
   e.stopPropagation();
@@ -1892,18 +1966,21 @@ function renderSidebar(){
     </button>`;
   }
 
-  // お気に入り・更新外フィルター（頻度の下）
-  if(favoriteCount > 0){
-    html += `<button class="sb-btn${activeTag==='__favorite__'?' active':''}" onclick="setTag('__favorite__')" style="margin-top:4px">
-      <div class="sb-dot" style="background:#E00"></div>★ お気に入り
-      <span class="sb-count">${favoriteCount}</span>
-    </button>`;
-  }
-  if(suspendedCount > 0){
-    html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" onclick="setTag('__suspended__')" style="margin-top:4px">
-      <div class="sb-dot" style="background:#999"></div>更新外
-      <span class="sb-count">${suspendedCount}</span>
-    </button>`;
+  // お気に入り・更新外（状態セクション）
+  if(favoriteCount > 0 || suspendedCount > 0){
+    html += `<div class="sb-section" style="margin-top:0.5rem">状態</div>`;
+    if(favoriteCount > 0){
+      html += `<button class="sb-btn${activeTag==='__favorite__'?' active':''}" onclick="setTag('__favorite__')">
+        <div class="sb-dot" style="background:linear-gradient(135deg,#E00 25%,#07C 25%,#07C 50%,#080 50%,#080 75%,#B80 75%)"></div>マーク済み
+        <span class="sb-count">${favoriteCount}</span>
+      </button>`;
+    }
+    if(suspendedCount > 0){
+      html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" onclick="setTag('__suspended__')">
+        <div class="sb-dot" style="background:#999"></div>更新外
+        <span class="sb-count">${suspendedCount}</span>
+      </button>`;
+    }
   }
 
   // タグフィルター
