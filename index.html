@@ -1841,11 +1841,21 @@ function renderSidebar(){
   const sb = document.getElementById('sidebar');
   const freqCounts = {};
   follows.forEach(f=>{ freqCounts[f.freq] = (freqCounts[f.freq]||0)+1; });
+  const suspendedCount = follows.filter(f=>f.suspended).length;
 
   let html = `<div class="sb-total">計 ${follows.length}件</div>`;
 
+  // 更新外フィルター（件数がある場合のみ表示）
+  if(suspendedCount > 0){
+    html += `<div class="sb-section">状態</div>`;
+    html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" onclick="setTag('__suspended__')">
+      <div class="sb-dot" style="background:#999"></div>更新外
+      <span class="sb-count">${suspendedCount}</span>
+    </button>`;
+  }
+
   // 頻度フィルター
-  html += `<div class="sb-section">頻度</div>`;
+  html += `<div class="sb-section" style="margin-top:${suspendedCount>0?'0.75rem':'0'}">頻度</div>`;
   FREQS.forEach(fr=>{
     const cnt = freqCounts[fr] || 0;
     if(!cnt) return;
@@ -2047,6 +2057,7 @@ function loadMoreChannels(){
 function renderMain(){
   const main = document.getElementById('main');
   let filtered = follows.filter(f=>{
+    if(activeTag === '__suspended__') return f.suspended;
     if(activeTag !== 'すべて' && !f.tags.includes(activeTag)) return false;
     if(activeFreq && f.freq !== activeFreq) return false;
     return true;
