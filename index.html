@@ -97,7 +97,13 @@ body{display:flex;flex-direction:column;min-height:100vh}
   .hdr-btn.api{border-color:#9A6ABE;color:#9A6ABE}
   .hdr-btn.api:hover{background:#2A1A3A;color:#BAAADE}
 }
-/* ハンバーガーメニューボタン（スマホのみ表示） */
+/* スマホ用タグバー */
+.mobile-tags{
+  display:none;flex:1;overflow-x:auto;scrollbar-width:none;
+  align-items:center;gap:6px;
+}
+.mobile-tags::-webkit-scrollbar{display:none}
+/* ハンバーガーボタン（PCでは非表示、スマホ・全ブラウザで表示） */
 .menu-btn{
   display:none;width:40px;height:40px;border-radius:8px;
   border:1px solid var(--border);background:transparent;
@@ -232,6 +238,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   .hdr-actions{display:none}
   .sort-bar{display:none}
   .menu-btn{display:flex}
+  .mobile-tags{display:flex}
   .bottom-nav{display:block}
   .main{padding:0.75rem;padding-bottom:calc(80px + max(8px, env(safe-area-inset-bottom)))}
   .header{padding:0 0.75rem;height:48px}
@@ -706,7 +713,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <body>
 
 <div class="header">
-  <div class="logo">frady<span>cat</span></div>
+  <div class="logo" onclick="document.getElementById('main').scrollTo({top:0,behavior:'smooth'})" style="cursor:pointer" title="トップに戻る">frady<span>cat</span></div>
+  <!-- スマホ用タグバー（PCでは非表示） -->
+  <div class="mobile-tags" id="mobileTagsScroll"></div>
   <div class="hdr-actions">
     <button class="hdr-btn refresh" onclick="refreshAll()">↻ 更新<span class="tooltip">全フィードを今すぐ更新</span></button>
     <button class="hdr-btn data" onclick="openImportModal()">↑ 一括インポート<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
@@ -718,7 +727,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <button class="hdr-btn api" onclick="bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
     <button class="hdr-btn primary" onclick="openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
   </div>
-  <!-- ハンバーガーボタン（スマホ・Brave等で表示） -->
+  <!-- ハンバーガーボタン（常時・全ブラウザ対応） -->
   <button class="menu-btn" onclick="openDrawer()" aria-label="メニュー">
     <span></span><span></span><span></span>
   </button>
@@ -735,11 +744,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <button class="sort-bar-btn" id="pcSortRegAsc"  onclick="setSortMode('registered-asc')" title="最初に登録したチャンネルを上に表示">🕰 登録古い順</button>
 </div>
 
-<!-- スマホ用ドロワーメニュー -->
+<!-- ドロワーメニュー（全ブラウザ対応） -->
 <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer">
-  <div class="drawer-title">タグ</div>
-  <div id="drawerTags" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto"></div>
   <div class="drawer-title">操作</div>
   <button class="drawer-btn primary" onclick="openModal();closeDrawer()">
     <span class="drawer-icon">＋</span>フォローを追加
@@ -1222,21 +1229,28 @@ function renderFollowCard(f){
         value="${esc(f.name)}"
         placeholder="チャンネル名"
         title="チャンネル名を編集できます"
-        onchange="changeName(${f.id}, this.value)"
+        onblur="changeName(${f.id}, this.value)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+        onclick="event.stopPropagation()"
         style="max-width:180px">
       <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます" style="cursor:help;text-decoration:underline dotted;margin-left:4px">タグ：</span>
       <input class="fc-tag-input" id="tag-input-${f.id}"
         value="${esc(f.tags.join(', '))}"
         placeholder="例: キャンプ, tech"
         title="カンマ・半角スペース・全角スペースで区切って複数入力できます"
-        onchange="changeTag(${f.id}, this.value)">
+        onblur="changeTag(${f.id}, this.value)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+        onclick="event.stopPropagation()">
     </div>
     <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">メモ：</span>
       <input class="fc-tag-input" id="memo-input-${f.id}"
         value="${esc(f.memo||'')}"
         placeholder="メモや備考..."
-        onchange="changeMemo(${f.id}, this.value)">
+        onblur="changeMemo(${f.id}, this.value)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+        onclick="event.stopPropagation()"
+        onchange="event.stopPropagation()">
     </div>`;
 
   return `
@@ -1754,30 +1768,6 @@ function openDrawer(){
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawerBackdrop').classList.add('open');
   document.body.style.overflow='hidden';
-  // タグリストを更新
-  const drawerTags = document.getElementById('drawerTags');
-  if(drawerTags){
-    const allTagsList = [...new Set(follows.flatMap(f=>f.tags))].sort();
-    const items = [
-      {tag:'すべて', cnt: follows.length},
-      ...allTagsList.map(t=>({tag:t, cnt: follows.filter(f=>f.tags.includes(t)).length}))
-    ];
-    drawerTags.innerHTML = items.map(({tag, cnt})=>
-      `<button class="drawer-btn${activeTag===tag?' primary':''}"
-        data-tag="${esc(tag)}"
-        style="padding:8px 12px;font-size:13px">
-        <span class="drawer-icon">🏷</span>${esc(tag)}（${cnt}）
-      </button>`
-    ).join('');
-    // イベントをdelegationで設定（Safari対応）
-    drawerTags.onclick = e=>{
-      const btn = e.target.closest ? e.target.closest('button[data-tag]') : null;
-      const tag = btn ? btn.getAttribute('data-tag') : null;
-      if(!tag) return;
-      setTag(tag);
-      closeDrawer();
-    };
-  }
 }
 function closeDrawer(){
   document.getElementById('drawer').classList.remove('open');
@@ -1804,8 +1794,17 @@ function toggleSort(){
 }
 
 function renderTags(){
-  // タグはサイドバーに統合されたのでサイドバーを再描画
+  // PCサイドバーのタグを更新
   renderSidebar();
+  // スマホ用ヘッダータグバーを更新
+  const mobileBar = document.getElementById('mobileTagsScroll');
+  if(!mobileBar) return;
+  const allTagsList = ['すべて', ...new Set(follows.flatMap(f=>f.tags))].sort((a,b)=> a==='すべて'?-1:b==='すべて'?1:a.localeCompare(b,'ja'));
+  mobileBar.innerHTML = allTagsList.map(t=>
+    `<button class="tag-btn${activeTag===t?' active':''}"
+      style="white-space:nowrap;font-size:12px;padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:${activeTag===t?'var(--accent)':'transparent'};color:${activeTag===t?'#fff':'var(--text-muted)'};cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;"
+      onclick="setTag('${t.replace(/'/g, '&#39;')}')">${t}</button>`
+  ).join('');
 }
 
 function renderSidebar(){
