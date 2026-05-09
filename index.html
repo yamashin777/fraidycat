@@ -706,7 +706,6 @@ body{display:flex;flex-direction:column;min-height:100vh}
 
 <div class="header">
   <div class="logo">frady<span>cat</span></div>
-  <div class="tags-scroll" id="tagsScroll"></div>
   <div class="hdr-actions">
     <button class="hdr-btn refresh" onclick="refreshAll()">↻ 更新<span class="tooltip">全フィードを今すぐ更新</span></button>
     <button class="hdr-btn data" onclick="openImportModal()">↑ 一括インポート<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
@@ -735,6 +734,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <!-- スマホ用ドロワーメニュー -->
 <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer">
+  <div class="drawer-title">タグ</div>
+  <div id="drawerTags" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto"></div>
   <div class="drawer-title">操作</div>
   <button class="drawer-btn primary" onclick="openModal();closeDrawer()">
     <span class="drawer-icon">＋</span>フォローを追加
@@ -1741,6 +1742,22 @@ function openDrawer(){
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawerBackdrop').classList.add('open');
   document.body.style.overflow='hidden';
+  // タグリストを更新
+  const drawerTags = document.getElementById('drawerTags');
+  if(drawerTags){
+    const allTagsList = [...new Set(follows.flatMap(f=>f.tags))].sort();
+    drawerTags.innerHTML = [
+      `<button class="drawer-btn${activeTag==='すべて'?' primary':''}" onclick="setTag('すべて');closeDrawer()" style="padding:8px 12px;font-size:13px">
+        <span class="drawer-icon">🏷</span>すべて（${follows.length}）
+      </button>`,
+      ...allTagsList.map(t=>{
+        const cnt = follows.filter(f=>f.tags.includes(t)).length;
+        return `<button class="drawer-btn${activeTag===t?' primary':''}" onclick="setTag('${t}');closeDrawer()" style="padding:8px 12px;font-size:13px">
+          <span class="drawer-icon">🏷</span>${t}（${cnt}）
+        </button>`;
+      })
+    ].join('');
+  }
 }
 function closeDrawer(){
   document.getElementById('drawer').classList.remove('open');
@@ -1767,17 +1784,18 @@ function toggleSort(){
 }
 
 function renderTags(){
-  const tags = allTags();
-  document.getElementById('tagsScroll').innerHTML = tags.map(t=>
-    `<button class="tag-btn${t===activeTag?' active':''}" onclick="setTag('${t}')">${t}</button>`
-  ).join('');
+  // タグはサイドバーに統合されたのでサイドバーを再描画
+  renderSidebar();
 }
 
 function renderSidebar(){
   const sb = document.getElementById('sidebar');
   const freqCounts = {};
   follows.forEach(f=>{ freqCounts[f.freq] = (freqCounts[f.freq]||0)+1; });
+
   let html = `<div class="sb-total">計 ${follows.length}件</div>`;
+
+  // 頻度フィルター
   html += `<div class="sb-section">頻度</div>`;
   FREQS.forEach(fr=>{
     const cnt = freqCounts[fr] || 0;
@@ -1792,6 +1810,24 @@ function renderSidebar(){
       <div class="sb-dot"></div>すべて
     </button>`;
   }
+
+  // タグフィルター
+  const allTags = [...new Set(follows.flatMap(f=>f.tags))].sort();
+  if(allTags.length){
+    html += `<div class="sb-section" style="margin-top:0.75rem">タグ</div>`;
+    html += `<button class="sb-btn${activeTag==='すべて'?' active':''}" onclick="setTag('すべて')">
+      <div class="sb-dot"></div>すべて
+      <span class="sb-count">${follows.length}</span>
+    </button>`;
+    allTags.forEach(t=>{
+      const cnt = follows.filter(f=>f.tags.includes(t)).length;
+      html += `<button class="sb-btn${activeTag===t?' active':''}" onclick="setTag('${t}')">
+        <div class="sb-dot"></div>${t}
+        <span class="sb-count">${cnt}</span>
+      </button>`;
+    });
+  }
+
   sb.innerHTML = html;
 }
 
