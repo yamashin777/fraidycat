@@ -1227,17 +1227,21 @@ function renderFollowCard(f){
         placeholder="チャンネル名"
         title="チャンネル名を編集できます"
         onblur="changeName(${f.id}, this.value)"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+        onkeydown="event.stopPropagation();"
+        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
+        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
         onclick="event.stopPropagation()"
         style="max-width:180px">
       <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます" style="cursor:help;text-decoration:underline dotted;margin-left:4px">タグ：</span>
       <input class="fc-tag-input" id="tag-input-${f.id}"
         value="${esc(f.tags.join(', '))}"
-        placeholder="例: キャンプ, tech"
+        placeholder="例: キャンプ tech（スペース・カンマ区切り）"
         title="カンマ・半角スペース・全角スペースで区切って複数入力できます"
         onblur="changeTag(${f.id}, this.value)"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-        onclick="event.stopPropagation()">
+        onkeydown="event.stopPropagation();"
+        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
+        onkeyup="event.stopPropagation();if(event.key==='Enter'){changeTag(${f.id},this.value);this.blur();}"
+        onclick="event.stopPropagation();this.select()">
     </div>
     <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">メモ：</span>
@@ -1245,14 +1249,16 @@ function renderFollowCard(f){
         value="${esc(f.memo||'')}"
         placeholder="メモや備考..."
         onblur="changeMemo(${f.id}, this.value)"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+        onkeydown="event.stopPropagation();"
+        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
+        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
         onclick="event.stopPropagation()"
         onchange="event.stopPropagation()">
     </div>`;
 
   return `
   <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}">
-    <div class="fc-row" onclick="toggleExpand(${f.id})">
+    <div class="fc-row" onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup'))toggleExpand(${f.id})">
       <div class="fc-avatar" style="background:${bg};color:${fg}">
         ${f.iconUrl ? `<img src="${esc(f.iconUrl)}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
         ${f.initials}
@@ -1299,7 +1305,7 @@ function renderFollowCard(f){
         <button class="fc-copy-btn" onclick="toggleRegDateInput(event,${f.id})">✕</button>
       </div>
     </div>
-    <div class="fc-detail">
+    <div class="fc-detail" onclick="event.stopPropagation()">
       ${freqSelector}
       ${renderDetail(f)}
     </div>
