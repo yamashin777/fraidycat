@@ -805,9 +805,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
   </div>
 </div>
 
-<div class="statusbar">
+<div class="statusbar" id="statusbar" onclick="if(statusState==='err')showErrorList()" style="cursor:default">
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
+  <span id="statusHint"></span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1110,6 +1111,13 @@ function setStatus(state, msg){
   statusState = state;
   document.getElementById('statusDot').className = 'status-dot' + (state==='loading'?' loading':state==='ok'?' ok':state==='err'?' err':'');
   document.getElementById('statusText').textContent = msg;
+  const hint = document.getElementById('statusHint');
+  const bar = document.getElementById('statusbar');
+  if(hint){
+    hint.textContent = state==='err' ? ' ← クリックで詳細確認' : '';
+    hint.style.color = 'var(--accent-mid)';
+  }
+  if(bar) bar.style.cursor = state==='err' ? 'pointer' : 'default';
 }
 
 /* 同時フェッチ数の上限 */
@@ -2678,6 +2686,46 @@ setInterval(()=>{
   // 5分ごとにチェック（60秒から延長）
   follows.forEach(f=>{ if(shouldRefetch(f)) enqueueFetch(f); });
 }, 5 * 60 * 1000);
+
+/* エラー一覧表示 */
+function showErrorList(){
+  const errs = follows.filter(f=>f.error);
+  if(!errs.length) return;
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="document.getElementById('modalContainer').innerHTML=''">
+    <div class="modal" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
+      <h2>取得エラー（${errs.length}件）</h2>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
+        エラーが続く場合はURLを確認するか、チャンネルを削除してください
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${errs.map(f=>`
+          <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="font-size:13px;font-weight:500">${esc(f.name)}</span>
+              <button class="btn-cancel" style="margin-left:auto;font-size:11px;padding:2px 8px"
+                onclick="enqueueFetch(follows.find(x=>x.id===${f.id}));document.getElementById('modalContainer').innerHTML=''">
+                再試行
+              </button>
+              <button class="btn-cancel" style="font-size:11px;padding:2px 8px;color:var(--danger)"
+                onclick="follows=follows.filter(x=>x.id!==${f.id});save();render();document.getElementById('modalContainer').innerHTML=''">
+                削除
+              </button>
+            </div>
+            <div style="font-size:11px;color:var(--danger);font-family:var(--font-mono,monospace)">${esc(f.error||'')}</div>
+            <div style="font-size:10px;color:var(--text-faint);margin-top:2px;word-break:break-all">${esc(f.url)}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ok" onclick="errs.forEach(f=>enqueueFetch(f));document.getElementById('modalContainer').innerHTML=''">
+          全件再試行
+        </button>
+        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">閉じる</button>
+      </div>
+    </div>
+  </div>`;
+}
 
 /* ── Boot ── */
 load();
