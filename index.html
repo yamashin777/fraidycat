@@ -2905,16 +2905,79 @@ function showErrorList(){
   </div>`;
 }
 
-function clearErrorAndRetry(id){
+/* エラー一覧表示 */
+function showErrorList(){
+  const errs = follows.filter(f=>f.error);
+  if(!errs.length) return;
+  const errIds = errs.map(f=>f.id); // IDを先に取得しておく
+
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="document.getElementById('modalContainer').innerHTML=''">
+    <div class="modal" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
+      <h2>取得エラー（${errs.length}件）</h2>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
+        「更新外」にするとチャンネルを残したまま自動更新をスキップします
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${errs.map(f=>`
+          <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+              <span style="font-size:13px;font-weight:500">${esc(f.name)}</span>
+              <button class="btn-cancel" style="margin-left:auto;font-size:11px;padding:2px 8px"
+                onclick="retrySingle(${f.id})">
+                再試行
+              </button>
+              <button class="btn-cancel" style="font-size:11px;padding:2px 8px;color:var(--accent-mid);border-color:var(--accent-mid)"
+                onclick="suspendFollow(${f.id})">
+                更新外にする
+              </button>
+            </div>
+            <div style="font-size:11px;color:var(--danger);font-family:var(--font-mono,monospace)">${esc(f.error||'')}</div>
+            <div style="font-size:10px;color:var(--text-faint);margin-top:2px;word-break:break-all">${esc(f.url)}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ok" onclick="suspendAllErrors()">
+          全件を更新外にする
+        </button>
+        <button class="btn-cancel" onclick="retryAllErrors(${JSON.stringify(errIds)})">全件再試行</button>
+        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">閉じる</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* 個別再試行 */
+function retrySingle(id){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
   f.error = null;
   f.suspended = false;
   save();
-  enqueueFetch(f, false);
   document.getElementById('modalContainer').innerHTML='';
-  render();
+  enqueueFetch(f, true); // 進捗カウント対象
+  fetchTotal = fetchTotal || 1;
 }
+
+/* 全件再試行 */
+function retryAllErrors(ids){
+  document.getElementById('modalContainer').innerHTML=''; // 先にモーダルを閉じる
+  const targets = ids.map(id=>follows.find(x=>x.id===id)).filter(Boolean);
+  targets.forEach(f=>{ f.error=null; f.suspended=false; });
+  save();
+  // 進捗表示付きで再フェッチ
+  fetchTotal = targets.length;
+  fetchDone = 0;
+  setStatus('loading', `再試行中 0/${fetchTotal}（0%）`);
+  targets.forEach(f=>{
+    if(fetchQueue.find(x=>x.id===f.id)) return;
+    fetchQueue.push(f);
+  });
+  drainQueue();
+}
+
+function clearErrorAndRetry(id){ retrySingle(id); } // 後方互換
 
 function suspendFollow(id){
   const f = follows.find(x=>x.id===id);
