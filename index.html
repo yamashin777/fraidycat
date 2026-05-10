@@ -1055,14 +1055,32 @@ async function applyGhSettings(){
   document.getElementById('modalContainer').innerHTML='';
   if(enabled && token && repo){
     setStatus('loading','GitHub接続テスト中...');
-    const ok = await loadFromGitHub();
-    if(ok){
-      render();
-      setStatus('ok','GitHub同期OK！データを読み込みました');
-    } else {
-      // ファイルがない場合は新規作成
-      await saveToGitHub();
-      setStatus('ok','GitHub同期OK！新規ファイルを作成しました');
+    try{
+      // まず接続テスト
+      const testRes = await fetch(
+        `https://api.github.com/repos/${repo}`,
+        {headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github.v3+json'}}
+      );
+      if(!testRes.ok){
+        const err = await testRes.json().catch(()=>({}));
+        setStatus('err', `GitHub接続失敗: ${err.message||testRes.status}`);
+        return;
+      }
+      const ok = await loadFromGitHub();
+      if(ok){
+        render();
+        setStatus('ok','GitHub同期OK！データを読み込みました');
+      } else {
+        await saveToGitHub();
+        const saved = ghSha ? true : false;
+        if(saved){
+          setStatus('ok','GitHub同期OK！新規ファイルを作成しました');
+        } else {
+          setStatus('err','ファイル作成に失敗しました。トークンのrepo権限を確認してください');
+        }
+      }
+    }catch(e){
+      setStatus('err', `エラー: ${e.message}`);
     }
   }
 }
