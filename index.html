@@ -881,7 +881,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.6</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.9</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1377,6 +1377,17 @@ async function autoFetchTitle(url){
   const nameEl = document.getElementById('f-name');
   const statusEl = document.getElementById('f-url-status');
   if(!nameEl || !statusEl) return;
+
+  // 重複チェック
+  const duplicate = follows.find(f => f.url === url);
+  if(duplicate){
+    statusEl.textContent = `⚠ 「${duplicate.name}」として既に登録されています`;
+    statusEl.style.color = 'var(--danger)';
+    nameEl.value = duplicate.name;
+    formData.name = duplicate.name;
+    return;
+  }
+
   if(nameEl.value.trim()) return; // don't overwrite user input
 
   statusEl.textContent = '取得中...';
@@ -2192,15 +2203,13 @@ function openDrawer(){
     const favoriteCount = follows.filter(f=>f.favorite).length;
 
     // 検索欄
-    let html = `<div style="padding:6px 12px 4px">
+    let html = `<div style="padding:6px 0 4px">
       <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:4px 12px">
-        <input id="drawerSearch" type="text" placeholder="🔍 チャンネル名を検索..."
+        <span style="font-size:14px">🔍</span>
+        <input id="drawerSearch" type="search" placeholder="チャンネル名を検索..."
           value="${searchQuery}"
-          oninput="setSearch(this.value)"
-          onkeydown="event.stopPropagation()"
-          onkeypress="event.stopPropagation();event.stopImmediatePropagation()"
-          style="border:none;background:transparent;outline:none;font-size:13px;width:100%;font-family:'DM Sans',sans-serif;color:var(--text)">
-        ${searchQuery ? `<button onclick="clearSearch();document.getElementById('drawerSearch').value=''" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:12px">✕</button>` : ''}
+          style="border:none;background:transparent;outline:none;font-size:16px;width:100%;font-family:'DM Sans',sans-serif;color:var(--text);-webkit-user-select:text;user-select:text">
+        ${searchQuery ? `<button id="drawerSearchClear" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:0 4px">✕</button>` : ''}
       </div>
     </div>`;
 
@@ -2233,6 +2242,21 @@ function openDrawer(){
     html += makeBtn('登録 古い順', '🕰', sortMode==='registered-asc', undefined, undefined, 'registered-asc');
 
     freqDiv.innerHTML = html;
+
+    // 検索欄のイベントをJSで設定（iPhoneでinline onXXXが効かないため）
+    const searchEl = document.getElementById('drawerSearch');
+    if(searchEl){
+      searchEl.addEventListener('input', function(){ setSearch(this.value); });
+      searchEl.addEventListener('keydown', function(e){ e.stopPropagation(); });
+      searchEl.addEventListener('keypress', function(e){ e.stopPropagation(); });
+    }
+    const clearEl = document.getElementById('drawerSearchClear');
+    if(clearEl){
+      clearEl.addEventListener('click', function(){
+        clearSearch();
+        if(searchEl) searchEl.value = '';
+      });
+    }
 
     // event delegation でボタンのクリックを処理
     freqDiv.onclick = freqDiv.ontouchend = (e) => {
@@ -2639,6 +2663,26 @@ function addFollow(){
   const url = document.getElementById('f-url').value.trim();
   const name = document.getElementById('f-name').value.trim() || url;
   if(!url){ alert('URLは必須です'); return; }
+
+  // 重複チェック
+  const duplicate = follows.find(f => f.url === url);
+  if(duplicate){
+    const msg = `「${duplicate.name}」として既に登録されています。\n\n重複して登録しますか？`;
+    if(!confirm(msg)) return;
+  }
+
+  // 名前の類似チェック（URLが違っても名前が似ている場合）
+  if(!duplicate && name !== url){
+    const nameLower = name.toLowerCase();
+    const similar = follows.filter(f => {
+      const fName = f.name.toLowerCase();
+      return fName.includes(nameLower) || nameLower.includes(fName);
+    });
+    if(similar.length > 0){
+      const msg = `似た名前のチャンネルが既に登録されています：\n${similar.slice(0,3).map(f=>`・${f.name}`).join('\n')}\n\n続けて登録しますか？`;
+      if(!confirm(msg)) return;
+    }
+  }
   const tags = splitTags(document.getElementById('f-tags').value);
   const memo = document.getElementById('f-memo')?.value.trim() || '';
   const initials = name.split(/[\s\/\-_]+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || '??';
