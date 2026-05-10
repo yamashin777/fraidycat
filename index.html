@@ -881,7 +881,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.2</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.3</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2191,12 +2191,6 @@ function openDrawer(){
     const suspendedCount = follows.filter(f=>f.suspended).length;
     const favoriteCount = follows.filter(f=>f.favorite).length;
 
-    // デバッグ：全頻度の件数を表示
-    const debugInfo = FREQS.map(fr=>`${fr}:${freqCounts[fr]||0}`).join(' / ');
-    console.log('freqCounts:', debugInfo, 'total:', follows.length);
-    // ドロワーに件数を一時表示（デバッグ用）
-    html += `<div style="font-size:10px;color:var(--text-faint);padding:2px 12px;font-family:monospace">${debugInfo}</div>`;
-
     // 検索欄
     let html = `<div style="padding:6px 12px 4px">
       <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:4px 12px">
@@ -2220,7 +2214,6 @@ function openDrawer(){
       </button>`;
 
     html += makeBtn(`すべて（${follows.length}）`, '📋', !activeFreq && activeTag==='すべて' && !searchQuery, "setFreq(null);setTag('すべて')");
-    // FREQS順に表示 + 未知の頻度も表示
     const allFreqs = [...new Set([...FREQS, ...Object.keys(freqCounts)])];
     allFreqs.forEach(fr=>{
       const cnt = freqCounts[fr]||0;
@@ -2232,7 +2225,6 @@ function openDrawer(){
     if(suspendedCount > 0)
       html += makeBtn(`更新外（${suspendedCount}）`, '⏸', activeTag==='__suspended__', "setTag('__suspended__')");
 
-    // 登録順ソート
     html += `<div style="padding:6px 12px 2px;font-size:11px;font-weight:500;color:var(--text-faint);letter-spacing:.06em;text-transform:uppercase">登録順</div>`;
     html += makeBtn('登録 新しい順', '🆕', sortMode==='registered-desc', "setSortMode('registered-desc')");
     html += makeBtn('登録 古い順', '🕰', sortMode==='registered-asc', "setSortMode('registered-asc')");
