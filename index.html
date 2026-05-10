@@ -293,7 +293,14 @@ body{display:flex;flex-direction:column;min-height:100vh}
   overflow:hidden;position:relative;
   border:2px solid transparent;transition:border-color 0.15s;
 }
-.fc-avatar[data-mark="red"]   {border-color:#E00;box-shadow:0 0 0 1px #E00;}
+.fc-avatar.fc-avatar-clickable{
+  cursor:pointer;
+}
+.fc-avatar.fc-avatar-clickable:hover{
+  opacity:0.85;
+  transform:scale(1.08);
+  transition:transform 0.12s,opacity 0.12s;
+}
 .fc-avatar[data-mark="blue"]  {border-color:#07C;box-shadow:0 0 0 1px #07C;}
 .fc-avatar[data-mark="green"] {border-color:#080;box-shadow:0 0 0 1px #080;}
 .fc-avatar[data-mark="yellow"]{border-color:#E6B800;box-shadow:0 0 0 1px #E6B800;}
@@ -753,16 +760,16 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <!-- スマホ用タグバー（PCでは非表示） -->
   <div class="mobile-tags" id="mobileTagsScroll"></div>
   <div class="hdr-actions">
-    <button class="hdr-btn refresh" onclick="refreshAll()">↻ 更新<span class="tooltip">全フィードを今すぐ更新</span></button>
-    <button class="hdr-btn data" onclick="openImportModal()">↑ 一括インポート<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
-    <button class="hdr-btn data" onclick="exportJSON()">↓ エクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
-    <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()">↑ インポート<span class="tooltip">JSONファイルからフォローデータを読み込み</span></button>
+    <button class="hdr-btn refresh" onclick="refreshAll()" ontouchend="event.preventDefault();refreshAll()">↻ 更新<span class="tooltip">全フィードを今すぐ更新</span></button>
+    <button class="hdr-btn data" onclick="openImportModal()" ontouchend="event.preventDefault();openImportModal()">↑ 一括インポート<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
+    <button class="hdr-btn data" onclick="exportJSON()" ontouchend="event.preventDefault();exportJSON()">↓ エクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
+    <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()" ontouchend="event.preventDefault();document.getElementById('importJsonFile').click()">↑ インポート<span class="tooltip">JSONファイルからフォローデータを読み込み</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
-    <button class="hdr-btn api" onclick="openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
-    <button class="hdr-btn api" onclick="openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
-    <button class="hdr-btn api" onclick="openGhSettingsModal()">🔄 GitHub同期<span class="tooltip">複数端末でデータを自動同期</span></button>
-    <button class="hdr-btn api" onclick="bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
-    <button class="hdr-btn primary" onclick="openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
+    <button class="hdr-btn api" onclick="openBulkFreqModal()" ontouchend="event.preventDefault();openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
+    <button class="hdr-btn api" onclick="openApiKeyModal()" ontouchend="event.preventDefault();openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
+    <button class="hdr-btn api" onclick="openGhSettingsModal()" ontouchend="event.preventDefault();openGhSettingsModal()">🔄 GitHub同期<span class="tooltip">複数端末でデータを自動同期</span></button>
+    <button class="hdr-btn api" onclick="bulkFetchDurations()" ontouchend="event.preventDefault();bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
+    <button class="hdr-btn primary" onclick="openModal()" ontouchend="event.preventDefault();openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
   </div>
   <!-- ハンバーガーボタンはボトムナビの☰から操作 -->
 </div>
@@ -823,22 +830,22 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <!-- スマホ用ボトムナビ -->
 <div class="bottom-nav">
   <div class="bottom-nav-inner">
-    <button class="bnav-btn" id="bnavFreq" onclick="setSortMode('freq')">
+    <button class="bnav-btn" id="bnavFreq" onclick="setSortMode('freq')" ontouchend="event.preventDefault();setSortMode('freq')">
       <span class="bnav-icon">📋</span>CH順
     </button>
-    <button class="bnav-btn" id="bnavLatest" onclick="setSortMode('latest')">
+    <button class="bnav-btn" id="bnavLatest" onclick="setSortMode('latest')" ontouchend="event.preventDefault();setSortMode('latest')">
       <span class="bnav-icon">🕐</span>新着
     </button>
-    <button class="bnav-btn" id="bnavDurDesc" onclick="setSortMode('duration-desc')">
+    <button class="bnav-btn" id="bnavDurDesc" onclick="setSortMode('duration-desc')" ontouchend="event.preventDefault();setSortMode('duration-desc')">
       <span class="bnav-icon">⏬</span>長い
     </button>
-    <button class="bnav-btn" id="bnavDurAsc" onclick="setSortMode('duration-asc')">
+    <button class="bnav-btn" id="bnavDurAsc" onclick="setSortMode('duration-asc')" ontouchend="event.preventDefault();setSortMode('duration-asc')">
       <span class="bnav-icon">⏫</span>短い
     </button>
-    <button class="bnav-btn" onclick="refreshAll()">
+    <button class="bnav-btn" onclick="refreshAll()" ontouchend="event.preventDefault();refreshAll()">
       <span class="bnav-icon">↻</span>更新
     </button>
-    <button class="bnav-btn" onclick="openDrawer()">
+    <button class="bnav-btn" onclick="openDrawer()" ontouchend="event.preventDefault();openDrawer()">
       <span class="bnav-icon">☰</span>メニュー
     </button>
   </div>
@@ -1546,7 +1553,10 @@ function renderFollowCard(f){
   return `
   <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}">
     <div class="fc-row" onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup'))toggleExpand(${f.id})">
-      <div class="fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
+      <div class="fc-avatar fc-avatar-clickable" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}"
+        onclick="event.stopPropagation();toggleExpand(${f.id})"
+        ontouchend="event.preventDefault();event.stopPropagation();toggleExpand(${f.id})"
+        title="クリックで展開">
         ${f.iconUrl ? `<img src="${esc(f.iconUrl)}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
         ${f.initials}
       </div>
