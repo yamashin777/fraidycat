@@ -559,7 +559,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .modal h2{
   font-family:'DM Serif Display',serif;font-size:20px;margin-bottom:1.25rem;
 }
-.form-row{margin-bottom:12px}
+.form-row{margin-bottom:12px;position:relative}
 .form-label{
   font-size:11px;font-family:'DM Mono',monospace;font-weight:500;
   letter-spacing:0.06em;color:var(--text-muted);
@@ -1288,7 +1288,54 @@ function parseRSS(raw){
 
 /* ── Auto-detect feed name from URL ── */
 let autoFetchTimer = null;
-async function autoFetchTitle(url){
+function showTagSuggestions(val){
+  const box = document.getElementById('tag-suggestions');
+  if(!box) return;
+  // 最後のタグ（カーソル位置のもの）を取得
+  const parts = val.split(/[,、\s\u3000]+/);
+  const current = parts[parts.length-1].trim().toLowerCase();
+  const allTags = [...new Set(follows.flatMap(f=>f.tags))].sort();
+  const matched = allTags.filter(t=>
+    t.toLowerCase().includes(current) &&
+    !parts.slice(0,-1).map(p=>p.trim()).includes(t) // 既に入力済みは除外
+  );
+  if(!matched.length || !current){
+    // currentが空でも全タグ表示
+    const show = current ? matched : allTags;
+    if(!show.length){ box.style.display='none'; return; }
+    box.innerHTML = show.map(t=>
+      `<div onclick="selectTag('${esc(t)}')"
+        style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:0.5px solid var(--border)"
+        onmouseenter="this.style.background='var(--tag-bg)'"
+        onmouseleave="this.style.background=''">${esc(t)}</div>`
+    ).join('');
+    box.style.display = 'block';
+    return;
+  }
+  box.innerHTML = matched.map(t=>
+    `<div onclick="selectTag('${esc(t)}')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:0.5px solid var(--border)"
+      onmouseenter="this.style.background='var(--tag-bg)'"
+      onmouseleave="this.style.background=''">${esc(t)}</div>`
+  ).join('');
+  box.style.display = 'block';
+}
+
+function hideTagSuggestions(){
+  const box = document.getElementById('tag-suggestions');
+  if(box) box.style.display = 'none';
+}
+
+function selectTag(tag){
+  const input = document.getElementById('f-tags');
+  if(!input) return;
+  const parts = input.value.split(/[,、\s\u3000]+/);
+  parts[parts.length-1] = tag;
+  input.value = parts.join(', ') + ', ';
+  formData.tags = input.value;
+  input.focus();
+  hideTagSuggestions();
+}
   if(!url || !url.startsWith('http')) return;
   const nameEl = document.getElementById('f-name');
   const statusEl = document.getElementById('f-url-status');
@@ -2414,8 +2461,7 @@ function renderModal(){
       <div class="form-row">
         <label class="form-label">RSS / Atom フィード URL</label>
         <input class="form-input" id="f-url" type="url" value="${esc(formData.url)}"
-          oninput="formData.url=this.value"
-          onblur="autoFetchTitle(this.value.trim())"
+          oninput="formData.url=this.value;clearTimeout(window._urlTimer);window._urlTimer=setTimeout(()=>autoFetchTitle(this.value.trim()),800)"
           placeholder="https://example.com/feed">
         <div class="form-hint" id="f-url-status" style="min-height:16px">URLを入力すると名前を自動取得します</div>
       </div>
@@ -2437,9 +2483,14 @@ function renderModal(){
         </select>
       </div>
       <div class="form-row">
-        <label class="form-label">タグ（カンマ区切り）</label>
+        <label class="form-label">タグ</label>
         <input class="form-input" id="f-tags" type="text" value="${esc(formData.tags)}"
-          oninput="formData.tags=this.value" placeholder="例: tech, news, 読み物">
+          oninput="formData.tags=this.value;showTagSuggestions(this.value)"
+          onfocus="showTagSuggestions(this.value)"
+          onblur="setTimeout(()=>hideTagSuggestions(),200)"
+          placeholder="例: tech, news（スペース・カンマ区切り）"
+          autocomplete="off">
+        <div id="tag-suggestions" style="display:none;position:absolute;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.12);max-height:160px;overflow-y:auto;width:100%"></div>
       </div>
       <div class="form-row">
         <label class="form-label">メモ（任意）</label>
