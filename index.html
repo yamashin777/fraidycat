@@ -122,10 +122,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
 }
 .drawer-backdrop.open{display:block}
 .drawer{
-  position:fixed;top:0;right:0;bottom:0;width:260px;
+  position:fixed;top:0;right:0;bottom:0;width:280px;
   background:var(--surface);border-left:1px solid var(--border);
   z-index:91;transform:translateX(100%);transition:transform 0.25s ease;
-  display:flex;flex-direction:column;padding:1rem;gap:8px;overflow-y:auto;
+  display:flex;flex-direction:column;overflow:hidden;
 }
 .drawer.open{transform:translateX(0)}
 .drawer-title{
@@ -813,6 +813,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <!-- ドロワーメニュー（全ブラウザ対応） -->
 <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer">
+  <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem;display:flex;flex-direction:column;gap:8px">
   <div class="drawer-title">頻度フィルター</div>
   <div id="drawerFreqFilter" style="display:flex;flex-direction:column;gap:2px"></div>
   <div class="drawer-title" style="margin-top:8px">操作</div>
@@ -847,6 +848,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <span class="drawer-icon">↑</span>JSONインポート
   </button>
   <input type="file" id="importJsonFileMobile" accept=".json" style="display:none" onchange="importJSON(event)">
+  </div><!-- end inner scroll container -->
 </div>
 
 <div class="layout">
@@ -2191,6 +2193,10 @@ function openDrawer(){
     const suspendedCount = follows.filter(f=>f.suspended).length;
     const favoriteCount = follows.filter(f=>f.favorite).length;
 
+    // デバッグ：全頻度の件数を表示
+    const debugInfo = FREQS.map(fr=>`${fr}:${freqCounts[fr]||0}`).join(' / ');
+    console.log('freqCounts:', debugInfo, 'total:', follows.length);
+
     // 検索欄
     let html = `<div style="padding:6px 12px 4px">
       <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:4px 12px">
@@ -2214,7 +2220,9 @@ function openDrawer(){
       </button>`;
 
     html += makeBtn(`すべて（${follows.length}）`, '📋', !activeFreq && activeTag==='すべて' && !searchQuery, "setFreq(null);setTag('すべて')");
-    FREQS.forEach(fr=>{
+    // FREQS順に表示 + 未知の頻度も表示
+    const allFreqs = [...new Set([...FREQS, ...Object.keys(freqCounts)])];
+    allFreqs.forEach(fr=>{
       const cnt = freqCounts[fr]||0;
       if(!cnt) return;
       html += makeBtn(`${fr}（${cnt}）`, '⏱', activeFreq===fr, `setFreq('${fr}')`);
