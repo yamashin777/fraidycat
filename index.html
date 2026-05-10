@@ -1343,6 +1343,8 @@ function selectTag(tag){
   input.focus();
   hideTagSuggestions();
 }
+
+async function autoFetchTitle(url){
   if(!url || !url.startsWith('http')) return;
   const nameEl = document.getElementById('f-name');
   const statusEl = document.getElementById('f-url-status');
@@ -3272,19 +3274,26 @@ if(ghSyncEnabled && ghToken && ghRepo){
 
       if(!Array.isArray(ghData)) return;
 
-      // 文字化けチェック：最初のチャンネル名に文字化けが含まれていないか確認
+      // 文字化けチェック
       const firstName = ghData[0]?.name || '';
       const hasGarbled = /[\uFFFD\u0000-\u001F]/.test(firstName) ||
         (firstName.length > 0 && !/[\u0020-\u007E\u3000-\u9FFF\uF900-\uFAFF]/.test(firstName));
       if(hasGarbled){
-        console.warn('GitHub data appears garbled, using local data instead');
-        // ローカルデータでGitHubを上書き
+        console.warn('GitHub data appears garbled, pushing local data to GitHub');
         ghSha = json.sha;
         await saveToGitHub();
         return;
       }
 
-      // チャンネル数が多い方を採用
+      // GitHubの件数がローカルより少ない場合はローカルを優先してGitHubに書き戻す
+      if(ghData.length < follows.length){
+        console.log(`GitHub(${ghData.length}件) < Local(${follows.length}件) → ローカルをGitHubに書き戻し`);
+        ghSha = json.sha;
+        await saveToGitHub();
+        return;
+      }
+
+      // GitHubが同じかそれ以上の件数の場合は採用
       if(ghData.length >= follows.length){
         follows = ghData.map(f=>({
           ...f,
