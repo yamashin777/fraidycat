@@ -881,7 +881,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.9</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.10</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1604,7 +1604,6 @@ function renderFollowCard(f){
       <div class="fc-body">
         <div class="fc-top">
           <span class="fc-name">${esc(f.name)}</span>
-          <span class="fc-platform">${esc(f.platform)}</span>
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 ${esc(f.memo)}</span>` : ''}
@@ -2618,12 +2617,7 @@ function renderModal(){
         <input class="form-input" id="f-name" type="text" value="${esc(formData.name)}"
           oninput="formData.name=this.value" placeholder="URLを入力後に自動入力されます">
       </div>
-      <div class="form-row">
-        <label class="form-label">プラットフォーム</label>
-        <select class="form-select" id="f-platform" onchange="formData.platform=this.value">
-          ${['RSS/ブログ','YouTube','Podcast','その他'].map(p=>`<option${p===formData.platform?' selected':''}>${p}</option>`).join('')}
-        </select>
-      </div>
+
       <div class="form-row">
         <label class="form-label">チェック頻度</label>
         <select class="form-select" id="f-freq" onchange="formData.freq=this.value">
@@ -2690,7 +2684,7 @@ function addFollow(){
     id: Date.now(),
     registeredAt: Date.now(),
     name, url,
-    platform: document.getElementById('f-platform').value,
+    platform: url.includes('youtube.com')||url.includes('youtu.be') ? 'YouTube' : url.includes('spotify.com')||url.includes('anchor.fm')||url.includes('simplecast') ? 'Podcast' : 'RSS/ブログ',
     freq: document.getElementById('f-freq').value,
     tags: tags.length ? tags : ['一般'],
     colorIdx: formData.colorIdx,
