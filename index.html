@@ -881,7 +881,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.10</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.11</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -929,10 +929,10 @@ const COLORS = [
 
 const FREQS = ['リアルタイム','毎日','毎週','毎月','毎年'];
 const MARK_COLORS = {
-  red:    {border:'#E00', bg:'#FFE5E5', label:'赤'},
-  blue:   {border:'#07C', bg:'#E5F4FF', label:'青'},
-  green:  {border:'#080', bg:'#E5FFE8', label:'緑'},
-  yellow: {border:'#E6B800', bg:'#FFFBE5', label:'黄'},
+  red:    {border:'#E00', bg:'#FFE5E5', darkBg:'rgba(220,0,0,0.12)', label:'赤'},
+  blue:   {border:'#07C', bg:'#E5F4FF', darkBg:'rgba(0,119,204,0.12)', label:'青'},
+  green:  {border:'#080', bg:'#E5FFE8', darkBg:'rgba(0,136,0,0.12)', label:'緑'},
+  yellow: {border:'#E6B800', bg:'#FFFBE5', darkBg:'rgba(230,184,0,0.12)', label:'黄'},
 };
 const FREQ_PILL = {
   'リアルタイム':'fp-rt','毎日':'fp-daily','毎週':'fp-weekly',
@@ -1591,8 +1591,10 @@ function renderFollowCard(f){
         onchange="event.stopPropagation()">
     </div>`;
 
+  const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
+  const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
   return `
-  <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}">
+  <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}"${markBg?` style="background:${markBg}"`:''}>
     <div class="fc-row" onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup'))toggleExpand(${f.id})">
       <div class="fc-avatar fc-avatar-clickable" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}"
         onclick="event.stopPropagation();toggleExpand(${f.id})"
