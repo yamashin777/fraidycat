@@ -947,7 +947,11 @@ async function loadFromGitHub(){
     if(!res.ok) throw new Error(`GitHub API ${res.status}`);
     const json = await res.json();
     ghSha = json.sha;
-    const decoded = JSON.parse(atob(json.content.replace(/\n/g,'')));
+    // TextDecoderでデコード（TextEncoderで保存したデータに対応）
+    const binStr = atob(json.content.replace(/\n/g,''));
+    const bytes = new Uint8Array(binStr.length);
+    for(let i=0; i<binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+    const decoded = JSON.parse(new TextDecoder().decode(bytes));
     if(!Array.isArray(decoded)) return false;
     // ローカルより新しければ上書き
     follows = decoded.map(f=>({
