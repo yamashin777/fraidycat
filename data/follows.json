@@ -13486,7 +13486,7 @@
     "initials": "岐",
     "posts": [],
     "loading": false,
-    "lastFetched": 1778392922681,
+    "lastFetched": 1778393275072,
     "error": null,
     "registeredAt": 1777956690508,
     "iconUrl": "https://yt3.ggpht.com/KAEppXi1rl0zk76582lWxVg7AS39bWvTGE1m0YMQJFWi7JnKz4nm-F0lVoESNCoun96sVvem1g=s88-c-k-c0x00ffffff-no-rj"
@@ -15283,40 +15283,9 @@
     ],
     "colorIdx": 0,
     "initials": "株",
-    "posts": [
-      {
-        "title": "任天堂株注目／日本株 爆上げ予定、アメリカ半導体株お祭り",
-        "link": "https://www.youtube.com/watch?v=5MWG20QnEXU",
-        "date": "2026-05-06T05:03:53.000Z",
-        "duration": 707
-      },
-      {
-        "title": "誰も言わない株式投資の現実",
-        "link": "https://www.youtube.com/watch?v=wvUl7s7rsqc",
-        "date": "2026-05-03T02:51:26.000Z",
-        "duration": 535
-      },
-      {
-        "title": "株ひどい 富士通 NEC オリラン JR／明日の商社 期待度ランキング",
-        "link": "https://www.youtube.com/watch?v=n8FI7FoPr5c",
-        "date": "2026-04-30T10:24:32.000Z",
-        "duration": 715
-      },
-      {
-        "title": "注目株 任天堂 IHI アドバンテスト 中外製薬 日立 きんでん キーエンスファナックS高／明日は日銀会合",
-        "link": "https://www.youtube.com/watch?v=US45IWrQfc0",
-        "date": "2026-04-27T09:48:09.000Z",
-        "duration": 707
-      },
-      {
-        "title": "株下落祭り。ソニーFG トヨタ 伊藤忠 神戸物産 イオン。日経平均株価は60000タッチで下落",
-        "link": "https://www.youtube.com/watch?v=YlfrVnBi_LM",
-        "date": "2026-04-23T09:26:13.000Z",
-        "duration": 762
-      }
-    ],
+    "posts": [],
     "loading": false,
-    "lastFetched": 1778392718094,
+    "lastFetched": 1778393277542,
     "error": null,
     "registeredAt": 1777956690549,
     "iconUrl": "https://yt3.ggpht.com/ytc/AIdro_lz1voPmoqpg-rQ-Vh3PEJg5SiDwPGgnHL5qKAKlvdqAJU=s88-c-k-c0x00ffffff-no-rj"
@@ -15774,7 +15743,7 @@
         "duration": 15123
       }
     ],
-    "loading": false,
+    "loading": true,
     "lastFetched": 1778392734937,
     "error": null,
     "registeredAt": 1777956690559,
