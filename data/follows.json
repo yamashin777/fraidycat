@@ -15711,40 +15711,9 @@
     ],
     "colorIdx": 2,
     "initials": "オF",
-    "posts": [
-      {
-        "title": "【FXライブ】特大イベント！ 米雇用統計 21:30",
-        "link": "https://www.youtube.com/watch?v=SwjwsebWc7s",
-        "date": "2026-05-08T16:29:41.000Z",
-        "duration": 15595
-      },
-      {
-        "title": "【FXライブ】介入まだ続きそ？ 米失業保険申請件数 21:30",
-        "link": "https://www.youtube.com/watch?v=BcWAH7w6D9A",
-        "date": "2026-05-07T15:15:22.000Z",
-        "duration": 11422
-      },
-      {
-        "title": "【FXライブ】介入終わり？これだけ？？ 米ADP雇用統計 21:15",
-        "link": "https://www.youtube.com/watch?v=-SoncenD4eg",
-        "date": "2026-05-06T16:14:15.000Z",
-        "duration": 14562
-      },
-      {
-        "title": "【FXライブ】緊急配信！為替介入か！！！！！！！！？",
-        "link": "https://www.youtube.com/watch?v=Jp5vjYEUwhs",
-        "date": "2026-05-06T06:25:56.000Z",
-        "duration": 6103
-      },
-      {
-        "title": "【FXライブ】介入もう終わり？？？　米 非ISM＆JOLTS求人 23:00",
-        "link": "https://www.youtube.com/watch?v=OegU70Eu8Ik",
-        "date": "2026-05-05T16:16:42.000Z",
-        "duration": 15123
-      }
-    ],
-    "loading": true,
-    "lastFetched": 1778392734937,
+    "posts": [],
+    "loading": false,
+    "lastFetched": 1778393280829,
     "error": null,
     "registeredAt": 1777956690559,
     "iconUrl": "https://yt3.ggpht.com/wE6qb5yzw5MLqdYzRJc5N8H_Cc4ssng9jQvRGGeGPo1g91dYFJd7QhyihAi5HbvKAf83OfUQxg=s88-c-k-c0x00ffffff-no-rj"
