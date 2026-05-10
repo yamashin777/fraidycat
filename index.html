@@ -73,6 +73,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   border:1px solid var(--border);background:transparent;color:var(--text-muted);
   font-family:'DM Sans',sans-serif;transition:all 0.15s;white-space:nowrap;
   -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
 }
 .hdr-btn:hover{background:var(--tag-bg);color:var(--text)}
 .hdr-btn.refresh{
@@ -794,8 +795,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <button class="drawer-btn" onclick="openGhSettingsModal();closeDrawer()">
     <span class="drawer-icon">🔄</span>GitHub同期設定
   </button>
-  <button class="drawer-btn" onclick="openApiKeyModal();closeDrawer()">
-    <span class="drawer-icon">🔑</span>YouTube APIキー設定
+  <button class="drawer-btn" onclick="openApiKeyModal();closeDrawer()">    <span class="drawer-icon">🔑</span>YouTube APIキー設定
   </button>
   <button class="drawer-btn" onclick="bulkFetchDurations();closeDrawer()">
     <span class="drawer-icon">▶</span>動画時間を一括取得
