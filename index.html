@@ -759,6 +759,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn api" onclick="openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
     <button class="hdr-btn api" onclick="openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
+    <button class="hdr-btn api" onclick="openGhSettingsModal()">🔄 GitHub同期<span class="tooltip">複数端末でデータを自動同期</span></button>
     <button class="hdr-btn api" onclick="bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
     <button class="hdr-btn primary" onclick="openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
   </div>
@@ -790,6 +791,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <span class="drawer-icon">↻</span>すべて更新
   </button>
   <div class="drawer-title">データ</div>
+  <button class="drawer-btn" onclick="openGhSettingsModal();closeDrawer()">
+    <span class="drawer-icon">🔄</span>GitHub同期設定
+  </button>
   <button class="drawer-btn" onclick="openApiKeyModal();closeDrawer()">
     <span class="drawer-icon">🔑</span>YouTube APIキー設定
   </button>
@@ -914,6 +918,154 @@ let showModal = false;
 let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',memo:'',colorIdx:0};
 let sortMode = 'freq'; // 'freq' | 'latest' | 'duration-desc' | 'duration-asc' | 'registered-desc' | 'registered-asc'
 let ytApiKey = localStorage.getItem('fraidycat_yt_api_key') || '';
+
+/* ── GitHub同期設定 ── */
+let ghToken = localStorage.getItem('fraidycat_gh_token') || '';
+let ghRepo  = localStorage.getItem('fraidycat_gh_repo')  || 'yamashin777/fraidycat';
+let ghPath  = localStorage.getItem('fraidycat_gh_path')  || 'data/follows.json';
+let ghSyncEnabled = localStorage.getItem('fraidycat_gh_sync') === 'true';
+let ghSha = null; // 最新ファイルのSHA（更新に必要）
+let ghSaveTimer = null;
+
+function saveGhSettings(token, repo, path, enabled){
+  ghToken = token; ghRepo = repo; ghPath = path; ghSyncEnabled = enabled;
+  localStorage.setItem('fraidycat_gh_token',  token);
+  localStorage.setItem('fraidycat_gh_repo',   repo);
+  localStorage.setItem('fraidycat_gh_path',   path);
+  localStorage.setItem('fraidycat_gh_sync',   enabled ? 'true' : 'false');
+}
+
+/* GitHubからデータを読み込む */
+async function loadFromGitHub(){
+  if(!ghSyncEnabled || !ghToken || !ghRepo) return false;
+  try{
+    const res = await fetch(
+      `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
+      {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'}}
+    );
+    if(res.status === 404) return false; // ファイルがまだない
+    if(!res.ok) throw new Error(`GitHub API ${res.status}`);
+    const json = await res.json();
+    ghSha = json.sha;
+    const decoded = JSON.parse(atob(json.content.replace(/\n/g,'')));
+    if(!Array.isArray(decoded)) return false;
+    // ローカルより新しければ上書き
+    follows = decoded.map(f=>({
+      ...f,
+      registeredAt: f.registeredAt || f.id || Date.now(),
+      posts: (f.posts||[]).map(p=>({
+        ...p,
+        date: p.date ? new Date(p.date) : null
+      })).filter(p=>!p.date||!isNaN(p.date.getTime())),
+      loading: false,
+      error: f.error||null,
+    }));
+    save(); // localStorageにも保存
+    return true;
+  }catch(e){
+    console.warn('GitHub load error:', e);
+    return false;
+  }
+}
+
+/* GitHubにデータを保存（デバウンス付き） */
+function scheduleSaveToGitHub(){
+  if(!ghSyncEnabled || !ghToken || !ghRepo) return;
+  if(ghSaveTimer) clearTimeout(ghSaveTimer);
+  ghSaveTimer = setTimeout(saveToGitHub, 3000); // 3秒後に保存
+}
+
+async function saveToGitHub(){
+  if(!ghSyncEnabled || !ghToken || !ghRepo) return;
+  try{
+    const data = follows.map(f=>({
+      ...f,
+      posts:(f.posts||[]).map(p=>({...p,date:p.date instanceof Date?p.date.toISOString():(p.date||null)}))
+    }));
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+    const body = {message:`sync ${new Date().toISOString()}`,content};
+    if(ghSha) body.sha = ghSha;
+    const res = await fetch(
+      `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
+      {method:'PUT',headers:{'Authorization':`token ${ghToken}`,'Content-Type':'application/json'},
+       body:JSON.stringify(body)}
+    );
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      console.warn('GitHub save error:', err.message);
+      // SHAが古い場合は最新SHAを取得して再試行
+      if(res.status===409){
+        const r2 = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
+          {headers:{'Authorization':`token ${ghToken}`}});
+        if(r2.ok){ const j2=await r2.json(); ghSha=j2.sha; await saveToGitHub(); }
+      }
+      return;
+    }
+    const json = await res.json();
+    ghSha = json.content?.sha;
+    setStatus('ok', `同期完了: ${new Date().toLocaleTimeString('ja-JP')}`);
+  }catch(e){
+    console.warn('GitHub save error:', e);
+  }
+}
+
+/* GitHub設定モーダル */
+function openGhSettingsModal(){
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="document.getElementById('modalContainer').innerHTML=''">
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:480px">
+      <h2>GitHub同期設定</h2>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;line-height:1.6">
+        複数端末でデータを自動同期します。<br>
+        Personal Access Token（repo権限）が必要です。
+      </div>
+      <div class="form-row">
+        <label class="form-label">Personal Access Token</label>
+        <input class="form-input" id="gh-token" type="password"
+          value="${esc(ghToken)}" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+      </div>
+      <div class="form-row">
+        <label class="form-label">リポジトリ（ユーザー名/リポジトリ名）</label>
+        <input class="form-input" id="gh-repo" type="text"
+          value="${esc(ghRepo)}" placeholder="yamashin777/fraidycat">
+      </div>
+      <div class="form-row">
+        <label class="form-label">保存先パス</label>
+        <input class="form-input" id="gh-path" type="text"
+          value="${esc(ghPath)}" placeholder="data/follows.json">
+      </div>
+      <div class="form-row" style="flex-direction:row;align-items:center;gap:10px">
+        <input type="checkbox" id="gh-enabled" ${ghSyncEnabled?'checked':''}>
+        <label for="gh-enabled" style="font-size:13px;cursor:pointer">同期を有効にする</label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">キャンセル</button>
+        <button class="btn-ok" onclick="applyGhSettings()">保存して同期テスト</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function applyGhSettings(){
+  const token   = document.getElementById('gh-token').value.trim();
+  const repo    = document.getElementById('gh-repo').value.trim();
+  const path    = document.getElementById('gh-path').value.trim();
+  const enabled = document.getElementById('gh-enabled').checked;
+  saveGhSettings(token, repo, path, enabled);
+  document.getElementById('modalContainer').innerHTML='';
+  if(enabled && token && repo){
+    setStatus('loading','GitHub接続テスト中...');
+    const ok = await loadFromGitHub();
+    if(ok){
+      render();
+      setStatus('ok','GitHub同期OK！データを読み込みました');
+    } else {
+      // ファイルがない場合は新規作成
+      await saveToGitHub();
+      setStatus('ok','GitHub同期OK！新規ファイルを作成しました');
+    }
+  }
+}
 let loadingCount = 0;
 let fetchTotal = 0;   // 今回の更新バッチの総件数
 let fetchDone = 0;    // 完了件数
@@ -940,7 +1092,6 @@ function updateFetchStatus(){
 /* ── Storage ── */
 function save(){
   try{
-    // postsのdateはDateオブジェクトなのでISO文字列で保存
     const data = follows.map(f=>({
       ...f,
       posts: (f.posts||[]).map(p=>({
@@ -949,6 +1100,7 @@ function save(){
       }))
     }));
     localStorage.setItem('fraidycat_follows', JSON.stringify(data));
+    scheduleSaveToGitHub(); // GitHub同期（デバウンス付き）
   }catch(e){}
 }
 function load(){
@@ -2997,9 +3149,22 @@ function suspendAllErrors(){
 }
 
 /* ── Boot ── */
-load();
+load(); // まずlocalStorageから読み込む
 render();
 setStatus('idle','準備完了');
+
+/* GitHub同期が有効なら起動時に読み込み */
+if(ghSyncEnabled && ghToken && ghRepo){
+  setStatus('loading','GitHubからデータを読み込み中...');
+  loadFromGitHub().then(ok=>{
+    if(ok){
+      render();
+      setStatus('ok','GitHub同期完了');
+    } else {
+      setStatus('idle','準備完了');
+    }
+  });
+}
 
 /* 初回フェッチ: キューに順番に追加（setTimeoutを大量生成しない） */
 if(follows.length){
