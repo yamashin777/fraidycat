@@ -982,9 +982,14 @@ async function saveToGitHub(){
       ...f,
       posts:(f.posts||[]).map(p=>({...p,date:p.date instanceof Date?p.date.toISOString():(p.date||null)}))
     }));
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-    const body = {message:`sync ${new Date().toISOString()}`,content};
+    const jsonStr = JSON.stringify(data);
+    // TextEncoderで安全にBase64エンコード
+    const bytes = new TextEncoder().encode(jsonStr);
+    const binStr = Array.from(bytes).map(b=>String.fromCharCode(b)).join('');
+    const content = btoa(binStr);
+    const body = {message:`fraidycat sync ${new Date().toISOString()}`,content};
     if(ghSha) body.sha = ghSha;
+    console.log('GitHub PUT:', ghRepo, ghPath, 'sha:', ghSha);
     const res = await fetch(
       `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
       {method:'PUT',headers:{'Authorization':`token ${ghToken}`,'Content-Type':'application/json'},
@@ -992,8 +997,8 @@ async function saveToGitHub(){
     );
     if(!res.ok){
       const err = await res.json().catch(()=>({}));
-      console.warn('GitHub save error:', err.message);
-      // SHAが古い場合は最新SHAを取得して再試行
+      console.warn('GitHub save error:', res.status, err.message);
+      setStatus('err', `GitHub保存失敗: ${err.message||res.status}`);
       if(res.status===409){
         const r2 = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
           {headers:{'Authorization':`token ${ghToken}`}});
@@ -1003,9 +1008,11 @@ async function saveToGitHub(){
     }
     const json = await res.json();
     ghSha = json.content?.sha;
-    setStatus('ok', `同期完了: ${new Date().toLocaleTimeString('ja-JP')}`);
+    console.log('GitHub save OK, sha:', ghSha);
+    setStatus('ok', `GitHub同期完了: ${new Date().toLocaleTimeString('ja-JP')}`);
   }catch(e){
     console.warn('GitHub save error:', e);
+    setStatus('err', `GitHub保存エラー: ${e.message}`);
   }
 }
 
