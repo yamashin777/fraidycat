@@ -2184,7 +2184,6 @@ function openDrawer(){
   document.getElementById('drawerBackdrop').classList.add('open');
   document.body.style.overflow='hidden';
 
-  // 頻度フィルターを更新
   const freqDiv = document.getElementById('drawerFreqFilter');
   if(freqDiv){
     const freqCounts = {};
@@ -2192,32 +2191,39 @@ function openDrawer(){
     const suspendedCount = follows.filter(f=>f.suspended).length;
     const favoriteCount = follows.filter(f=>f.favorite).length;
 
-    let html = `<button class="drawer-btn${!activeFreq&&activeTag==='すべて'?' primary':''}"
-      onclick="setFreq(null);setTag('すべて');closeDrawer()" style="padding:8px 12px;font-size:13px">
-      <span class="drawer-icon">📋</span>すべて（${follows.length}）
-    </button>`;
+    // 検索欄
+    let html = `<div style="padding:6px 12px 4px">
+      <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:4px 12px">
+        <input id="drawerSearch" type="text" placeholder="🔍 チャンネル名を検索..."
+          value="${searchQuery}"
+          oninput="setSearch(this.value)"
+          onkeydown="event.stopPropagation()"
+          onkeypress="event.stopPropagation();event.stopImmediatePropagation()"
+          style="border:none;background:transparent;outline:none;font-size:13px;width:100%;font-family:'DM Sans',sans-serif;color:var(--text)">
+        ${searchQuery ? `<button onclick="clearSearch();document.getElementById('drawerSearch').value=''" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:12px">✕</button>` : ''}
+      </div>
+    </div>`;
 
+    // 頻度フィルター
+    const makeBtn = (label, icon, isActive, fn) =>
+      `<button class="drawer-btn${isActive?' primary':''}"
+        onclick="${fn};closeDrawer()"
+        ontouchend="event.preventDefault();${fn};closeDrawer()"
+        style="padding:8px 12px;font-size:13px">
+        <span class="drawer-icon">${icon}</span>${label}
+      </button>`;
+
+    html += makeBtn(`すべて（${follows.length}）`, '📋', !activeFreq && activeTag==='すべて', "setFreq(null);setTag('すべて')");
     FREQS.forEach(fr=>{
       const cnt = freqCounts[fr]||0;
       if(!cnt) return;
-      html += `<button class="drawer-btn${activeFreq===fr?' primary':''}"
-        onclick="setFreq('${fr}');closeDrawer()" style="padding:8px 12px;font-size:13px">
-        <span class="drawer-icon">⏱</span>${fr}（${cnt}）
-      </button>`;
+      html += makeBtn(`${fr}（${cnt}）`, '⏱', activeFreq===fr, `setFreq('${fr}')`);
     });
+    if(favoriteCount > 0)
+      html += makeBtn(`マーク済み（${favoriteCount}）`, '★', activeTag==='__favorite__', "setTag('__favorite__')");
+    if(suspendedCount > 0)
+      html += makeBtn(`更新外（${suspendedCount}）`, '⏸', activeTag==='__suspended__', "setTag('__suspended__')");
 
-    if(favoriteCount > 0){
-      html += `<button class="drawer-btn${activeTag==='__favorite__'?' primary':''}"
-        onclick="setTag('__favorite__');closeDrawer()" style="padding:8px 12px;font-size:13px">
-        <span class="drawer-icon">★</span>マーク済み（${favoriteCount}）
-      </button>`;
-    }
-    if(suspendedCount > 0){
-      html += `<button class="drawer-btn${activeTag==='__suspended__'?' primary':''}"
-        onclick="setTag('__suspended__');closeDrawer()" style="padding:8px 12px;font-size:13px">
-        <span class="drawer-icon">⏸</span>更新外（${suspendedCount}）
-      </button>`;
-    }
     freqDiv.innerHTML = html;
   }
 }
