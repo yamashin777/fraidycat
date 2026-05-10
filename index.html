@@ -881,7 +881,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.4</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.5</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -3397,30 +3397,20 @@ if(ghSyncEnabled && ghToken && ghRepo){
         return;
       }
 
-      // GitHubの件数がローカルより少ない場合はローカルを優先してGitHubに書き戻す
-      if(ghData.length < follows.length){
-        console.log(`GitHub(${ghData.length}件) < Local(${follows.length}件) → ローカルをGitHubに書き戻し`);
-        ghSha = json.sha;
-        await saveToGitHub();
-        return;
-      }
-
-      // GitHubが同じかそれ以上の件数の場合は採用
-      if(ghData.length >= follows.length){
-        follows = ghData.map(f=>({
-          ...f,
-          registeredAt: f.registeredAt || f.id || Date.now(),
-          posts: (f.posts||[]).map(p=>({
-            ...p,
-            date: p.date ? new Date(p.date) : null
-          })).filter(p=>!p.date||!isNaN(p.date.getTime())),
-          loading: false,
-          error: f.error||null,
-        }));
-        save(false);
-        render();
-        setStatus('ok','GitHub同期完了');
-      }
+      // GitHubを常に優先（件数に関わらず）
+      follows = ghData.map(f=>({
+        ...f,
+        registeredAt: f.registeredAt || f.id || Date.now(),
+        posts: (f.posts||[]).map(p=>({
+          ...p,
+          date: p.date ? new Date(p.date) : null
+        })).filter(p=>!p.date||!isNaN(p.date.getTime())),
+        loading: false,
+        error: f.error||null,
+      }));
+      save(false);
+      render();
+      setStatus('ok',`GitHub同期完了（${follows.length}件）`);
     }catch(e){
       console.warn('GitHub boot load error:', e);
     }
