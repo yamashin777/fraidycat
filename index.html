@@ -884,6 +884,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.1</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2196,6 +2197,8 @@ function openDrawer(){
     // デバッグ：全頻度の件数を表示
     const debugInfo = FREQS.map(fr=>`${fr}:${freqCounts[fr]||0}`).join(' / ');
     console.log('freqCounts:', debugInfo, 'total:', follows.length);
+    // ドロワーに件数を一時表示（デバッグ用）
+    html += `<div style="font-size:10px;color:var(--text-faint);padding:2px 12px;font-family:monospace">${debugInfo}</div>`;
 
     // 検索欄
     let html = `<div style="padding:6px 12px 4px">
