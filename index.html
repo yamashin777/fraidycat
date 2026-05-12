@@ -330,6 +330,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .fc-body{flex:1;min-width:0}
 .fc-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .fc-name{font-size:13px;font-weight:500}
+a.fc-name{color:var(--text);text-decoration:none;}
+a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .fc-platform{
   font-size:10px;font-family:'DM Mono',monospace;
   padding:1px 6px;border-radius:4px;
@@ -881,7 +883,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.11</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.13</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1605,7 +1607,18 @@ function renderFollowCard(f){
       </div>
       <div class="fc-body">
         <div class="fc-top">
-          <span class="fc-name">${esc(f.name)}</span>
+          ${(() => {
+            const chId = ytChannelIdFromUrl(f.url);
+            const plId = f.url.match(/playlist_id=([A-Za-z0-9_-]+)/)?.[1];
+            const chUrl = chId
+              ? `https://www.youtube.com/channel/${chId}`
+              : plId
+              ? `https://www.youtube.com/playlist?list=${plId}`
+              : null;
+            return chUrl
+              ? `<a class="fc-name" href="${esc(chUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${chId?'YouTubeチャンネルを開く':'YouTubeプレイリストを開く'}">${esc(f.name)}</a>`
+              : `<span class="fc-name">${esc(f.name)}</span>`;
+          })()}
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 ${esc(f.memo)}</span>` : ''}
