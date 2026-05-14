@@ -202,6 +202,13 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .bnav-icon{font-size:20px;line-height:1;}
 
 /* PCソートバー */
+/* スマホ用検索バー */
+.mobile-search-bar{
+  display:none;align-items:center;gap:8px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:6px 14px;position:sticky;top:48px;z-index:39;
+}
+
 .sort-bar{
   display:flex;gap:4px;align-items:center;padding:8px 1rem;
   border-bottom:1px solid var(--border);background:var(--surface);
@@ -258,6 +265,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   .sort-bar{display:none}
   .menu-btn{display:flex}
   .mobile-tags{display:flex}
+  .mobile-search-bar{display:flex}
   .bottom-nav{display:block}
   .main{padding:0.75rem;padding-bottom:calc(110px + max(8px, env(safe-area-inset-bottom)))}
   .statusbar{bottom:calc(52px + max(8px, env(safe-area-inset-bottom)));left:0;right:0;z-index:45;}
@@ -817,6 +825,15 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 <!-- ドロワーメニュー（全ブラウザ対応） -->
 <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer">
+  <!-- 検索欄（静的HTML・iPhoneで確実に動作） -->
+  <div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border-strong);border-radius:20px;padding:4px 12px;margin-bottom:4px">
+    <span style="font-size:14px;flex-shrink:0">🔍</span>
+    <input type="search" id="drawerSearchStatic"
+      placeholder="チャンネル名を検索..."
+      autocomplete="off" autocorrect="off" autocapitalize="off"
+      style="border:none;outline:none;background:transparent;width:100%;font-size:16px;font-family:'DM Sans',sans-serif;color:var(--text);-webkit-user-select:text;user-select:text">
+    <button id="drawerSearchClearStatic" style="display:none;background:none;border:none;color:var(--text-faint);font-size:14px;cursor:pointer;padding:0 2px;flex-shrink:0">✕</button>
+  </div>
   <div id="drawerFreqFilter" style="display:flex;flex-direction:column;gap:2px"></div>
   <div class="drawer-title" style="margin-top:8px">操作</div>
   <button class="drawer-btn primary" onclick="openModal();closeDrawer()" ontouchend="event.preventDefault();openModal();closeDrawer()">
@@ -883,7 +900,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.13</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.15</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2216,16 +2233,10 @@ function openDrawer(){
     const suspendedCount = follows.filter(f=>f.suspended).length;
     const favoriteCount = follows.filter(f=>f.favorite).length;
 
-    // 検索欄
-    let html = `<div style="padding:6px 0 4px">
-      <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:4px 12px">
-        <span style="font-size:14px">🔍</span>
-        <input id="drawerSearch" type="search" placeholder="チャンネル名を検索..."
-          value="${searchQuery}"
-          style="border:none;background:transparent;outline:none;font-size:16px;width:100%;font-family:'DM Sans',sans-serif;color:var(--text);-webkit-user-select:text;user-select:text">
-        ${searchQuery ? `<button id="drawerSearchClear" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:0 4px">✕</button>` : ''}
-      </div>
-    </div>`;
+    // 検索欄の値を同期（静的HTMLに設定済み）
+    const searchEl2 = document.getElementById('drawerSearchStatic');
+    if(searchEl2) searchEl2.value = searchQuery;
+    let html = '';
 
     // 頻度フィルターボタンをevent delegationで安全に生成
     const makeBtn = (label, icon, isActive, freq, tag, sort) => {
@@ -2256,21 +2267,6 @@ function openDrawer(){
     html += makeBtn('登録 古い順', '🕰', sortMode==='registered-asc', undefined, undefined, 'registered-asc');
 
     freqDiv.innerHTML = html;
-
-    // 検索欄のイベントをJSで設定（iPhoneでinline onXXXが効かないため）
-    const searchEl = document.getElementById('drawerSearch');
-    if(searchEl){
-      searchEl.addEventListener('input', function(){ setSearch(this.value); });
-      searchEl.addEventListener('keydown', function(e){ e.stopPropagation(); });
-      searchEl.addEventListener('keypress', function(e){ e.stopPropagation(); });
-    }
-    const clearEl = document.getElementById('drawerSearchClear');
-    if(clearEl){
-      clearEl.addEventListener('click', function(){
-        clearSearch();
-        if(searchEl) searchEl.value = '';
-      });
-    }
 
     // event delegation でボタンのクリックを処理
     freqDiv.onclick = freqDiv.ontouchend = (e) => {
@@ -3409,6 +3405,28 @@ function suspendAllErrors(){
 load(); // まずlocalStorageから読み込む
 render();
 setStatus('idle','準備完了');
+
+/* スマホ用検索バーのイベント設定 */
+(function(){
+  // ドロワー内の静的検索欄
+  const input = document.getElementById('drawerSearchStatic');
+  const clear = document.getElementById('drawerSearchClearStatic');
+  if(input){
+    input.addEventListener('input', function(){
+      setSearch(this.value);
+      if(clear) clear.style.display = this.value ? 'block' : 'none';
+    });
+    input.addEventListener('keydown', function(e){ e.stopPropagation(); });
+    input.addEventListener('keypress', function(e){ e.stopPropagation(); });
+  }
+  if(clear){
+    clear.addEventListener('click', function(){
+      clearSearch();
+      if(input) input.value = '';
+      this.style.display = 'none';
+    });
+  }
+})();
 
 /* GitHub同期が有効なら起動時に読み込み */
 if(ghSyncEnabled && ghToken && ghRepo){
