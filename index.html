@@ -169,6 +169,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
   background:var(--border-strong);
 }
 .sb-count{margin-left:auto;font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint)}
+.sb-drag-handle{font-size:14px;color:var(--text-faint);cursor:grab;margin-right:4px;flex-shrink:0;user-select:none}
+.sb-tag-draggable.drag-over{border-color:var(--accent);background:var(--accent-light);}
 .sb-total{
   font-size:11px;color:var(--text-faint);padding:6px 1.25rem 4px;
   border-bottom:0.5px solid var(--border);margin-bottom:2px;
@@ -642,6 +644,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .status-dot.ok{background:#5A8C2E}
 .status-dot.loading{background:#C89A30;animation:pulse 1s infinite}
 .status-dot.err{background:var(--danger)}
+.status-dot.warn{background:#E6A000}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 
 /* Timeline view */
@@ -896,7 +899,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.18</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.20</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1052,7 +1055,7 @@ async function saveToGitHub(){
     if(!res.ok){
       const err = await res.json().catch(()=>({}));
       console.warn('GitHub save error:', res.status, err.message);
-      setStatus('err', `GitHub保存失敗: ${err.message||res.status}`);
+      setStatus('warn', `⚠ GitHub保存失敗: ${err.message||res.status}`);
       if(res.status===409){
         const r2 = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
           {headers:{'Authorization':`token ${ghToken}`}});
@@ -1066,7 +1069,7 @@ async function saveToGitHub(){
     setStatus('ok', `GitHub同期完了: ${new Date().toLocaleTimeString('ja-JP')}`);
   }catch(e){
     console.warn('GitHub save error:', e);
-    setStatus('err', `GitHub保存エラー: ${e.message}`);
+    setStatus('warn', `⚠ GitHub保存エラー: ${e.message}`);
   }
 }
 
@@ -1124,7 +1127,7 @@ async function applyGhSettings(){
       );
       if(!testRes.ok){
         const err = await testRes.json().catch(()=>({}));
-        setStatus('err', `GitHub接続失敗: ${err.message||testRes.status}`);
+        setStatus('warn', `⚠ GitHub接続失敗: ${err.message||testRes.status}`);
         return;
       }
       const ok = await loadFromGitHub();
@@ -1441,7 +1444,8 @@ function relativeTime(d){
 
 function setStatus(state, msg){
   statusState = state;
-  document.getElementById('statusDot').className = 'status-dot' + (state==='loading'?' loading':state==='ok'?' ok':state==='err'?' err':'');
+  document.getElementById('statusDot').className = 'status-dot' +
+    (state==='loading'?' loading':state==='ok'?' ok':state==='err'?' err':state==='warn'?' warn':'');
   document.getElementById('statusText').textContent = msg;
   const hint = document.getElementById('statusHint');
   const bar = document.getElementById('statusbar');
@@ -2317,6 +2321,21 @@ function renderTags(){
   ).join('');
 }
 
+// タグの並び順をlocalStorageで管理
+let tagOrder = JSON.parse(localStorage.getItem('fraidycat_tag_order') || '[]');
+
+function saveTagOrder(){
+  localStorage.setItem('fraidycat_tag_order', JSON.stringify(tagOrder));
+}
+
+function getSortedTags(){
+  const allTags = [...new Set(follows.flatMap(f=>f.tags))];
+  // tagOrderに含まれるものを先に、残りはアルファベット順
+  const ordered = tagOrder.filter(t=>allTags.includes(t));
+  const rest = allTags.filter(t=>!ordered.includes(t)).sort();
+  return [...ordered, ...rest];
+}
+
 function renderSidebar(){
   const sb = document.getElementById('sidebar');
   const freqCounts = {};
@@ -2359,24 +2378,77 @@ function renderSidebar(){
     }
   }
 
-  // タグフィルター
-  const allTags = [...new Set(follows.flatMap(f=>f.tags))].sort();
-  if(allTags.length){
-    html += `<div class="sb-section" style="margin-top:0.75rem">タグ</div>`;
+  // タグフィルター（ドラッグ&ドロップ対応）
+  const sortedTags = getSortedTags();
+  if(sortedTags.length){
+    html += `<div class="sb-section" style="margin-top:0.75rem;display:flex;align-items:center;justify-content:space-between">
+      <span>タグ</span>
+      <span style="font-size:10px;color:var(--text-faint)">ドラッグで並び替え</span>
+    </div>`;
     html += `<button class="sb-btn${activeTag==='すべて'?' active':''}" onclick="setTag('すべて')">
       <div class="sb-dot"></div>すべて
       <span class="sb-count">${follows.length}</span>
     </button>`;
-    allTags.forEach(t=>{
+    html += `<div id="tagList">`;
+    sortedTags.forEach(t=>{
       const cnt = follows.filter(f=>f.tags.includes(t)).length;
-      html += `<button class="sb-btn${activeTag===t?' active':''}" onclick="setTag('${t}')">
-        <div class="sb-dot"></div>${t}
+      html += `<button class="sb-btn sb-tag-draggable${activeTag===t?' active':''}"
+        data-tag="${esc(t)}"
+        draggable="true"
+        onclick="setTag('${t.replace(/'/g,"\\'")}')">
+        <div class="sb-drag-handle" title="ドラッグして並び替え">⠿</div>
+        ${esc(t)}
         <span class="sb-count">${cnt}</span>
       </button>`;
     });
+    html += `</div>`;
   }
 
   sb.innerHTML = html;
+
+  // ドラッグ&ドロップのイベント設定
+  initTagDragDrop();
+}
+
+function initTagDragDrop(){
+  const tagList = document.getElementById('tagList');
+  if(!tagList) return;
+  const btns = tagList.querySelectorAll('.sb-tag-draggable');
+  let dragSrc = null;
+
+  btns.forEach(btn=>{
+    btn.addEventListener('dragstart', e=>{
+      dragSrc = btn;
+      btn.style.opacity = '0.4';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    btn.addEventListener('dragend', e=>{
+      btn.style.opacity = '';
+      tagList.querySelectorAll('.sb-tag-draggable').forEach(b=>b.classList.remove('drag-over'));
+    });
+    btn.addEventListener('dragover', e=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if(btn !== dragSrc){
+        tagList.querySelectorAll('.sb-tag-draggable').forEach(b=>b.classList.remove('drag-over'));
+        btn.classList.add('drag-over');
+      }
+    });
+    btn.addEventListener('drop', e=>{
+      e.preventDefault();
+      if(btn === dragSrc) return;
+      const tags = getSortedTags();
+      const fromTag = dragSrc.dataset.tag;
+      const toTag = btn.dataset.tag;
+      const fromIdx = tags.indexOf(fromTag);
+      const toIdx = tags.indexOf(toTag);
+      tags.splice(fromIdx, 1);
+      tags.splice(toIdx, 0, fromTag);
+      tagOrder = tags;
+      saveTagOrder();
+      renderSidebar();
+    });
+  });
 }
 
 function dayLabel(date){
