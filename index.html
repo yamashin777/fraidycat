@@ -899,7 +899,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.33</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.34</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2597,6 +2597,16 @@ function tlCard(p, mode){
   const liveBadge = getLiveBadge(p);
   const durAttr = liveBadge ? liveBadge.attr : isShort ? ' data-short="true"' : '';
   const durText = liveBadge ? liveBadge.text : isShort ? `[ショート]${dur ? ' '+dur : ''}` : dur;
+  // YouTubeサムネイル取得
+  const ytVideoId = p.link?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)?.[1]
+    || p.link?.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/)?.[1];
+  const thumbHtml = ytVideoId
+    ? `<img src="https://i.ytimg.com/vi/${ytVideoId}/default.jpg"
+        alt="" loading="lazy"
+        onerror="this.style.display='none'"
+        style="width:60px;height:34px;object-fit:cover;border-radius:4px;flex-shrink:0">`
+    : '';
+
   return `<div class="tl-card">
     <div class="tl-avatar" style="background:${p.bg};color:${p.fg}">
       ${p.follow.iconUrl ? `<img src="${esc(p.follow.iconUrl)}" alt="${esc(p.follow.initials)}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:6px;position:absolute;inset:0">` : ''}
@@ -2609,6 +2619,7 @@ function tlCard(p, mode){
         <a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
       </div>
     </div>
+    ${thumbHtml ? `<a href="${esc(p.link)}" target="_blank" rel="noopener" style="flex-shrink:0">${thumbHtml}</a>` : ''}
     <div class="tl-right">
       ${durText ? `<span class="tl-dur"${durAttr}>${durText}</span>` : ''}
     </div>
