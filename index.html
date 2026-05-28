@@ -306,12 +306,12 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .follow-card{
   background:var(--surface);border:1px solid var(--border);
   border-radius:8px;margin-bottom:3px;overflow:hidden;
-  transition:border-color 0.15s;
+  transition:border-color 0.15s;touch-action:manipulation;
 }
 .follow-card:hover{border-color:var(--border-strong)}
 .follow-card.expanded{border-color:var(--border-strong)}
 .fc-row{
-  display:flex;align-items:flex-start;gap:8px;padding:3px 10px 0;
+  display:flex;align-items:flex-start;gap:8px;padding:2px 8px 0;
   cursor:pointer;user-select:none;width:100%;
 }
 .fc-avatar{
@@ -338,8 +338,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   position:absolute;inset:0;
 }
 .fc-body{flex:1;min-width:0}
-.fc-top{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;overflow:hidden;min-width:0}
-.fc-name{font-size:13px;font-weight:500}
+.fc-top{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0}
 a.fc-name{color:var(--text);text-decoration:none;}
 a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 @media(max-width:640px){
@@ -920,7 +919,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.52</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.55</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1646,13 +1645,11 @@ function renderFollowCard(f){
   const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
   const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
   return `
-  <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}" ontouchend="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn,.dp-dur,a')){event.preventDefault();toggleExpand(${f.id})}"${markBg?` style="background:${markBg}"`:''}>
-    <div class="fc-row"
-      onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn'))toggleExpand(${f.id})"
-      ontouchend="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn')){event.preventDefault();toggleExpand(${f.id})}">
+  <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}"${markBg?` style="background:${markBg}"`:''}
+    onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn,a,.dp-dur'))toggleExpand(${f.id})"
+    style="${markBg?`background:${markBg};`:''}cursor:pointer">
+    <div class="fc-row">
       <div class="fc-avatar fc-avatar-clickable" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}"
-        onclick="event.stopPropagation();toggleExpand(${f.id})"
-        ontouchend="event.preventDefault();toggleExpand(${f.id})"
         title="クリックで展開">
         ${f.iconUrl ? `<img src="${esc(f.iconUrl)}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
         ${f.initials}
@@ -1685,7 +1682,7 @@ function renderFollowCard(f){
       </div>
     </div>
     ${(f.posts||[]).length > 0 ? `
-    <div class="fc-preview" style="padding:0 10px 3px" onclick="toggleExpand(${f.id})" ontouchend="event.preventDefault();toggleExpand(${f.id})">      ${(f.posts||[]).slice(0,3).map((p, pi)=>{
+    <div class="fc-preview" style="padding:0 8px 2px" onclick="toggleExpand(${f.id})">      ${(f.posts||[]).slice(0,3).map((p, pi)=>{
         const dur = fmtDuration(p.duration);
         const isShort = p.link && p.link.includes('/shorts/');
         const liveBadge = getLiveBadge(p);
