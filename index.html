@@ -919,7 +919,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.60</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.61</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -3384,14 +3384,20 @@ function exportJSON(){
       id: f.id, name: f.name, url: f.url,
       platform: f.platform, freq: f.freq,
       tags: f.tags, colorIdx: f.colorIdx, initials: f.initials,
+      memo: f.memo, markColor: f.markColor, suspended: f.suspended,
+      registeredAt: f.registeredAt, favorite: f.favorite,
     }))
   };
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  // iPadのSafariはa.click()が動作しないためwindow.openを使用
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `fraidycat_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
 }
 
 function importJSON(event){
