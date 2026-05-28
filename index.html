@@ -311,8 +311,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .follow-card:hover{border-color:var(--border-strong)}
 .follow-card.expanded{border-color:var(--border-strong)}
 .fc-row{
-  display:flex;align-items:flex-start;gap:10px;padding:5px 14px 0px;
-  cursor:pointer;user-select:none;
+  display:flex;align-items:flex-start;gap:10px;padding:5px 14px 0;
+  cursor:pointer;user-select:none;width:100%;
 }
 .fc-avatar{
   width:34px;height:34px;border-radius:7px;
@@ -920,7 +920,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.49</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.50</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1650,7 +1650,7 @@ function renderFollowCard(f){
     <div class="fc-row" onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup'))toggleExpand(${f.id})">
       <div class="fc-avatar fc-avatar-clickable" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}"
         onclick="event.stopPropagation();toggleExpand(${f.id})"
-        ontouchend="event.preventDefault();event.stopPropagation();toggleExpand(${f.id})"
+        ontouchend="event.preventDefault();toggleExpand(${f.id})"
         title="クリックで展開">
         ${f.iconUrl ? `<img src="${esc(f.iconUrl)}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
         ${f.initials}
@@ -1683,7 +1683,7 @@ function renderFollowCard(f){
       </div>
     </div>
     ${(f.posts||[]).length > 0 ? `
-    <div class="fc-preview" style="padding:1px 14px 4px" onclick="toggleExpand(${f.id})">      ${(f.posts||[]).slice(0,3).map((p, pi)=>{
+    <div class="fc-preview" style="padding:0px 14px 4px" onclick="toggleExpand(${f.id})">      ${(f.posts||[]).slice(0,3).map((p, pi)=>{
         const dur = fmtDuration(p.duration);
         const isShort = p.link && p.link.includes('/shorts/');
         const liveBadge = getLiveBadge(p);
