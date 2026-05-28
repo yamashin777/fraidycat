@@ -896,7 +896,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.39</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.40</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1649,6 +1649,15 @@ function renderFollowCard(f){
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span onclick="event.stopPropagation()">${linkifyMemo(f.memo)}</span></span>` : ''}
         </div>
+        <div class="fc-right" style="justify-content:flex-start;border-top:none;margin-left:0;padding-top:0;width:auto">
+          ${f.loading ? '<div class="fc-spinner"></div>' : ''}
+          <span class="freq-pill ${pillClass}">${f.freq}</span>
+          <span class="fc-ago" title="最終確認時刻">${agoText}</span>
+          <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
+          <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})"
+            title="${f.registeredAt ? '登録日: ' + new Date(f.registeredAt).toLocaleDateString('ja-JP') : '登録日を設定'}">📅</button>
+          <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
+        </div>
         ${(f.posts||[]).length > 0 ? `
         <div class="fc-preview" onclick="toggleExpand(${f.id})">
           ${(f.posts||[]).slice(0,3).map((p, pi)=>{
@@ -1679,15 +1688,6 @@ function renderFollowCard(f){
             </div>`;
           }).join('')}
         </div>` : ''}
-      </div>
-      <div class="fc-right">
-        ${f.loading ? '<div class="fc-spinner"></div>' : ''}
-        <span class="freq-pill ${pillClass}">${f.freq}</span>
-        <span class="fc-ago" title="最終確認時刻">${agoText}</span>
-        <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
-        <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})"
-          title="${f.registeredAt ? '登録日: ' + new Date(f.registeredAt).toLocaleDateString('ja-JP') : '登録日を設定'}">📅</button>
-        <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
       </div>
       <div class="fc-regdate-popup" id="regdate-popup-${f.id}" style="display:none" onclick="event.stopPropagation()">
         <span class="fc-freq-label">登録日：</span>
