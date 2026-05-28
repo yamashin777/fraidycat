@@ -814,7 +814,9 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="hdr-actions">
     <button class="hdr-btn refresh" onclick="refreshAll()" ontouchend="event.preventDefault();refreshAll()">↻ 更新<span class="tooltip">全フィードを今すぐ更新</span></button>
     <button class="hdr-btn data" onclick="openImportModal()" ontouchend="event.preventDefault();openImportModal()">↑ テキスト登録<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
-    <button class="hdr-btn data" onclick="exportJSON()" ontouchend="event.preventDefault();exportJSON()">↓ バックアップ<span class="tooltip">フォローデータをJSONファイルでバックアップ</span></button>
+    <button class="hdr-btn data" onclick="exportJSON()" ontouchend="event.preventDefault();exportJSON()">↓ JSONエクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
+    <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()" ontouchend="event.preventDefault();document.getElementById('importJsonFile').click()">↑ JSONインポート<span class="tooltip">JSONファイルからデータを読み込み</span></button>
+    <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn api" onclick="openBulkFreqModal()" ontouchend="event.preventDefault();openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
     <button class="hdr-btn api" onclick="openApiKeyModal()" ontouchend="event.preventDefault();openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
@@ -881,8 +883,12 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
     <span class="drawer-icon">📋</span>テキスト登録
   </button>
   <button class="drawer-btn" onclick="exportJSON();closeDrawer()" ontouchend="event.preventDefault();exportJSON();closeDrawer()">
-    <span class="drawer-icon">↓</span>バックアップ
+    <span class="drawer-icon">↓</span>JSONエクスポート
   </button>
+  <button class="drawer-btn" onclick="document.getElementById('importJsonFileMobile').click();closeDrawer()" ontouchend="event.preventDefault();document.getElementById('importJsonFileMobile').click();closeDrawer()">
+    <span class="drawer-icon">↑</span>JSONインポート
+  </button>
+  <input type="file" id="importJsonFileMobile" accept=".json" style="display:none" onchange="importJSON(event)">
   <input type="file" id="importJsonFileMobile" accept=".json" style="display:none" onchange="importJSON(event)">
 </div>
 
@@ -919,7 +925,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.61</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.63</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -3683,6 +3689,23 @@ if(ghSyncEnabled && ghToken && ghRepo){
         (firstName.length > 0 && !/[\u0020-\u007E\u3000-\u9FFF\uF900-\uFAFF]/.test(firstName));
       if(hasGarbled){
         console.warn('GitHub data appears garbled, pushing local data to GitHub');
+        ghSha = json.sha;
+        await saveToGitHub();
+        return;
+      }
+
+      // 異常データチェック：頻度が1種類しかない場合はローカルを優先
+      const freqTypes = [...new Set(ghData.map(f=>f.freq))];
+      if(freqTypes.length <= 1 && follows.length > 0 && follows.length >= ghData.length){
+        console.warn('GitHub data seems corrupted (only 1 freq type), using local data');
+        ghSha = json.sha;
+        await saveToGitHub();
+        return;
+      }
+
+      // GitHubのデータ件数がローカルより大幅に少ない場合もローカル優先
+      if(ghData.length < follows.length * 0.8){
+        console.warn(`GitHub(${ghData.length}) << Local(${follows.length}), using local data`);
         ghSha = json.sha;
         await saveToGitHub();
         return;
