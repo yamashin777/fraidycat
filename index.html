@@ -568,14 +568,25 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 @media(max-width:640px){
   .fc-short-label{display:none;}
 }
-/* PC: follow-card全体を縦積みにしてpreviewを上に */
+/* PCのみアイコンを動画行に表示 */
+.fc-preview-avatar{
+  display:none;width:20px;height:20px;border-radius:4px;
+  flex-shrink:0;position:relative;overflow:hidden;
+  align-items:center;justify-content:center;
+  font-size:9px;font-weight:500;font-family:'DM Mono',monospace;
+}
+/* PC: previewにアイコンと並べる */
 @media(min-width:641px){
-  .follow-card-inner{
-    display:flex;flex-direction:column-reverse;
+  .fc-preview-avatar{display:flex;}
+  .fc-preview-item{align-items:center;}
+  .fc-preview-title{
+    white-space:nowrap;flex:none;max-width:55%;
   }
-  .fc-preview{
-    padding:0 8px 2px !important;
-  }
+  .fc-preview-spacer{flex:1;}
+}
+/* スマホ: fc-preview-avatarは非表示 */
+@media(max-width:640px){
+  .fc-preview-avatar{display:none;}
 }
 .fc-preview-title:hover{color:var(--accent);}
 .fc-reg-date{
@@ -921,7 +932,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.64</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.65</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1650,7 +1661,6 @@ function renderFollowCard(f){
   <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}"${markBg?` style="background:${markBg}"`:''}
     onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn,a,.dp-dur'))toggleExpand(${f.id})"
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
-    <div class="follow-card-inner">
     <div class="fc-row">
       <div class="fc-avatar fc-avatar-clickable" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}"
         title="クリックで展開">
@@ -1685,7 +1695,8 @@ function renderFollowCard(f){
       </div>
     </div>
     ${(f.posts||[]).length > 0 ? `
-    <div class="fc-preview" style="padding:0 8px 2px" onclick="toggleExpand(${f.id})">      ${(f.posts||[]).slice(0,3).map((p, pi)=>{
+    <div class="fc-preview" style="padding:0 8px 2px" onclick="toggleExpand(${f.id})">
+      ${(f.posts||[]).slice(0,3).map((p, pi)=>{
         const dur = fmtDuration(p.duration);
         const isShort = p.link && p.link.includes('/shorts/');
         const liveBadge = getLiveBadge(p);
@@ -1701,7 +1712,13 @@ function renderFollowCard(f){
                 loading="lazy" onerror="this.parentElement.style.display='none'"
                 style="width:${twPc}px;height:${thPc}px;object-fit:cover;border-radius:3px;display:block">
             </a>` : '';
+        // PCのみアイコンを表示
+        const pcAvatarHtml = `<div class="fc-preview-avatar" style="background:${bg};color:${fg}">
+          ${f.iconUrl ? `<img src="${esc(f.iconUrl)}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:4px;position:absolute;inset:0">` : ''}
+          <span style="position:relative;z-index:1;font-size:9px">${esc(f.initials)}</span>
+        </div>`;
         return `<div class="fc-preview-item">
+          ${pcAvatarHtml}
           <div class="fc-preview-meta">
             ${dateStr?`<span class="fc-preview-date">${esc(dateStr)}</span>`:''}
             ${durText?`<span class="dp-dur"${durAttr}>${durText}</span>`:''}
@@ -1712,7 +1729,6 @@ function renderFollowCard(f){
         </div>`;
       }).join('')}
     </div>` : ''}
-    </div><!-- follow-card-inner -->
     <div class="fc-regdate-popup" id="regdate-popup-${f.id}" style="display:none" onclick="event.stopPropagation()">
       <span class="fc-freq-label">登録日：</span>
       <input type="date" class="fc-tag-input"
