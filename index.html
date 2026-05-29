@@ -569,6 +569,17 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   .fc-short-label{display:none;}
 }
 .fc-preview-thumb{display:inline;}
+.fc-avatar-col{display:none;flex-shrink:0;}
+.fc-right-inline{display:none;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;}
+@media(min-width:641px){
+  .fc-avatar-col{display:flex;}
+  .fc-right-inline{display:flex;}
+  .fc-preview-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%;}
+}
+.fc-avatar-mobile{display:none;}
+@media(max-width:640px){
+  .fc-avatar-mobile{display:flex;}
+}
 .fc-preview-title:hover{color:var(--accent);}
 .fc-reg-date{
   font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint);
@@ -913,7 +924,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.68</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.69</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1643,8 +1654,8 @@ function renderFollowCard(f){
     onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn,a,.dp-dur'))toggleExpand(${f.id})"
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
     <div class="fc-row">
-      <div class="fc-avatar fc-avatar-clickable" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}"
-        title="クリックで展開">
+      <!-- PCではfc-previewにアイコンを表示、スマホではここに表示 -->
+      <div class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
         ${f.iconUrl ? `<img src="${esc(f.iconUrl)}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
         ${f.initials}
       </div>
@@ -1665,13 +1676,6 @@ function renderFollowCard(f){
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span onclick="event.stopPropagation()">${linkifyMemo(f.memo)}</span></span>` : ''}
-          ${f.loading ? '<div class="fc-spinner"></div>' : ''}
-          <span class="freq-pill ${pillClass}">${f.freq}</span>
-          <span class="fc-ago" title="最終確認時刻">${agoText}</span>
-          <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
-          <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})"
-            title="${f.registeredAt ? '登録日: ' + new Date(f.registeredAt).toLocaleDateString('ja-JP') : '登録日を設定'}">📅</button>
-          <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
         </div>
       </div>
     </div>
@@ -1688,19 +1692,37 @@ function renderFollowCard(f){
           || p.link?.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/)?.[1];
         const twPc = pi===0 ? 60 : 30; const thPc = pi===0 ? 34 : 17;
         const thumbHtml = ytVid
-          ? `<a href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="fc-preview-thumb" style="flex-shrink:0">
+          ? `<a href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0">
               <img src="https://i.ytimg.com/vi/${ytVid}/default.jpg"
                 loading="lazy" onerror="this.parentElement.style.display='none'"
                 style="width:${twPc}px;height:${thPc}px;object-fit:cover;border-radius:3px;display:block">
             </a>` : '';
+        // 1件目の左にアイコン、右に頻度・ボタン（PCのみ）
+        const leftAvatar = pi===0
+          ? `<div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
+              ${f.iconUrl?`<img src="${esc(f.iconUrl)}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
+              ${esc(f.initials)}
+            </div>`
+          : `<div style="width:34px;flex-shrink:0"></div>`;
+        const rightButtons = pi===0
+          ? `<div class="fc-right-inline">
+              ${f.loading ? '<div class="fc-spinner"></div>' : ''}
+              <span class="freq-pill ${pillClass}">${f.freq}</span>
+              <span class="fc-ago" title="最終確認時刻">${agoText}</span>
+              <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
+              <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})" title="登録日">📅</button>
+              <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
+            </div>`
+          : '';
         return `<div class="fc-preview-item">
+          <div class="fc-avatar-col">${leftAvatar}</div>
           <div class="fc-preview-meta">
             ${dateStr?`<span class="fc-preview-date">${esc(dateStr)}</span>`:''}
             ${durText?`<span class="dp-dur"${durAttr}>${durText}</span>`:''}
           </div>
           <a class="fc-preview-title" href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(p.title)}</a>
           ${thumbHtml}
-          <span class="fc-preview-spacer"></span>
+          ${rightButtons}
         </div>`;
       }).join('')}
     </div>` : ''}
