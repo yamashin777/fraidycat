@@ -928,7 +928,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.71</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.72</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1680,6 +1680,12 @@ function renderFollowCard(f){
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span onclick="event.stopPropagation()">${linkifyMemo(f.memo)}</span></span>` : ''}
+          ${f.loading ? '<div class="fc-spinner"></div>' : ''}
+          <span class="freq-pill ${pillClass}">${f.freq}</span>
+          <span class="fc-ago" title="最終確認時刻">${agoText}</span>
+          <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
+          <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})" title="登録日">📅</button>
+          <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
         </div>
       </div>
     </div>
@@ -1702,22 +1708,13 @@ function renderFollowCard(f){
                 style="width:${twPc}px;height:${thPc}px;object-fit:cover;border-radius:3px;display:block">
             </a>` : '';
         // 1件目の左にアイコン、右に頻度・ボタン（PCのみ）
-        const leftAvatar = pi===1
+        const leftAvatar = pi===0
           ? `<div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
               ${f.iconUrl?`<img src="${esc(f.iconUrl)}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
               ${esc(f.initials)}
             </div>`
           : `<div style="width:34px;flex-shrink:0"></div>`;
-        const rightButtons = pi===0
-          ? `<div class="fc-right-inline">
-              ${f.loading ? '<div class="fc-spinner"></div>' : ''}
-              <span class="freq-pill ${pillClass}">${f.freq}</span>
-              <span class="fc-ago" title="最終確認時刻">${agoText}</span>
-              <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
-              <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})" title="登録日">📅</button>
-              <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
-            </div>`
-          : '';
+        const rightButtons = '';
         return `<div class="fc-preview-item">
           <div class="fc-avatar-col">${leftAvatar}</div>
           <div class="fc-preview-meta">
