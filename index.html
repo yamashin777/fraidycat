@@ -589,6 +589,31 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 }
 .dp-err{font-size:12px;color:var(--danger);font-style:italic}
 .dp-empty{font-size:12px;color:var(--text-faint);font-style:italic}
+.dp-schedule{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-bottom:10px;padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+}
+.dp-schedule-label{
+  font-size:12px;color:var(--text-muted);font-weight:500;
+  display:flex;align-items:center;gap:4px;flex-shrink:0;
+}
+.dp-schedule-hint{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:15px;height:15px;border-radius:50%;
+  background:var(--border-strong);color:var(--text-faint);
+  font-size:10px;cursor:help;font-weight:bold;
+}
+.dp-schedule-input{
+  font-size:13px;padding:4px 10px;border-radius:6px;
+  border:1px solid var(--border-strong);background:var(--bg);
+  color:var(--text);font-family:'DM Mono',monospace;
+  width:140px;outline:none;
+}
+.dp-schedule-input:focus{border-color:var(--accent);}
+.dp-schedule-desc{
+  font-size:10px;color:var(--text-faint);flex-basis:100%;
+}
 .dp-refresh{
   font-size:11px;color:var(--accent-mid);background:none;border:none;
   cursor:pointer;text-decoration:underline;padding:0;margin-top:4px;
@@ -920,7 +945,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.76</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.77</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2010,11 +2035,62 @@ function isLiveTitle(title){
     || /\blive\s*(stream|配信|放送)/.test(t);
 }
 
+// 取得時刻の設定（@8:00,20:00形式の時刻リスト）
+function setFetchTimes(id, val){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  // 正規化: 全角→半角、@や空白を除去し、HH:MM形式を抽出
+  const cleaned = (val||'')
+    .replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
+    .replace(/：/g, ':')
+    .replace(/[@＠\s]/g, '');
+  const times = cleaned.split(',')
+    .map(t=>t.trim())
+    .filter(t=>/^\d{1,2}:\d{2}$/.test(t))
+    .filter(t=>{
+      const [h,m] = t.split(':').map(Number);
+      return h>=0 && h<=23 && m>=0 && m<=59;
+    });
+  f.fetchTimes = times.join(',');
+  save();
+}
+
+// 取得時刻スケジュールのチェック（1分ごとに呼ばれる）
+function checkFetchSchedules(){
+  const now = new Date();
+  follows.forEach(f=>{
+    if(!f.fetchTimes || f.suspended) return;
+    const times = f.fetchTimes.split(',').filter(Boolean);
+    const lastFetched = f.lastFetched ? new Date(f.lastFetched) : null;
+    for(const t of times){
+      const [h,m] = t.split(':').map(Number);
+      // 本日のその予定時刻
+      const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+      // 予定時刻を過ぎていて、まだその時刻以降に取得していなければ取得
+      if(scheduled <= now && (!lastFetched || lastFetched < scheduled)){
+        enqueueFetch(f, false);
+        break; // 1チャンネルにつき1回でOK
+      }
+    }
+  });
+}
+
 function renderDetail(f){
-  if(f.loading) return '<div class="dp-empty">読み込み中...</div>';
-  if(f.error) return `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" onclick="fetchFollow(follows.find(x=>x.id===${f.id}))">再試行</button>`;
-  if(!f.posts || f.posts.length===0) return '<div class="dp-empty">記事が見つかりませんでした</div>';
-  return `<ul class="detail-posts">
+  const scheduleUI = `<div class="dp-schedule">
+    <label class="dp-schedule-label">取得時刻
+      <span class="dp-schedule-hint" title="毎日この時刻に自動取得します。複数指定はカンマ区切り。例: 8:00,20:00">?</span>
+    </label>
+    <input type="text" class="dp-schedule-input" id="sched-${f.id}"
+      value="${esc(f.fetchTimes || '')}"
+      placeholder="例: 8:00,20:00"
+      onclick="event.stopPropagation()"
+      onchange="setFetchTimes(${f.id}, this.value)">
+    <div class="dp-schedule-desc">毎日この時刻に自動取得（空欄で従来通り）</div>
+  </div>`;
+  if(f.loading) return scheduleUI + '<div class="dp-empty">読み込み中...</div>';
+  if(f.error) return scheduleUI + `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" onclick="fetchFollow(follows.find(x=>x.id===${f.id}))">再試行</button>`;
+  if(!f.posts || f.posts.length===0) return scheduleUI + '<div class="dp-empty">記事が見つかりませんでした</div>';
+  return scheduleUI + `<ul class="detail-posts">
     ${f.posts.map(p=>{
       const dur = fmtDuration(p.duration);
       const dateStr = fmtDatetime(p.date);
@@ -3380,7 +3456,7 @@ function exportJSON(){
       platform: f.platform, freq: f.freq,
       tags: f.tags, colorIdx: f.colorIdx, initials: f.initials,
       memo: f.memo, markColor: f.markColor, suspended: f.suspended,
-      registeredAt: f.registeredAt, favorite: f.favorite,
+      registeredAt: f.registeredAt, favorite: f.favorite, fetchTimes: f.fetchTimes,
     }))
   };
   const json = JSON.stringify(data, null, 2);
@@ -3611,11 +3687,16 @@ setInterval(()=>{
     el.textContent = relativeTime(new Date(f.lastFetched));
   });
 
+  // チャンネル個別の取得時刻スケジュールをチェック
+  checkFetchSchedules();
+
 }, 60000); // 1分ごと
 load(); // まずlocalStorageから読み込む
 searchQuery = '';
 render();
 setStatus('idle','準備完了');
+// 起動時にも取得時刻スケジュールをチェック（取りこぼし防止）
+setTimeout(()=>{ try{ checkFetchSchedules(); }catch(e){} }, 8000);
 
 /* スマホ用検索バーのイベント設定 */
 (function(){
