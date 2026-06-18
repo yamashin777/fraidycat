@@ -614,6 +614,11 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .dp-schedule-desc{
   font-size:10px;color:var(--text-faint);flex-basis:100%;
 }
+.dp-schedule-next{
+  font-size:11px;color:var(--accent-mid);font-family:'DM Mono',monospace;
+  background:var(--surface);padding:3px 8px;border-radius:6px;
+  border:1px solid var(--border);flex-shrink:0;
+}
 .dp-refresh{
   font-size:11px;color:var(--accent-mid);background:none;border:none;
   cursor:pointer;text-decoration:underline;padding:0;margin-top:4px;
@@ -945,7 +950,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.77</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.78</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2035,6 +2040,26 @@ function isLiveTitle(title){
     || /\blive\s*(stream|配信|放送)/.test(t);
 }
 
+// 次回取得予定時刻を計算（fetchTimesから現在以降で最も近い時刻）
+function nextFetchTime(f){
+  if(!f.fetchTimes) return null;
+  const times = f.fetchTimes.split(',').filter(Boolean);
+  if(!times.length) return null;
+  const now = new Date();
+  let candidates = [];
+  times.forEach(t=>{
+    const [h,m] = t.split(':').map(Number);
+    // 本日の予定時刻
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+    // 翌日の予定時刻
+    const tomorrow = new Date(today.getTime() + 86400000);
+    if(today > now) candidates.push(today);
+    candidates.push(tomorrow);
+  });
+  candidates.sort((a,b)=>a-b);
+  return candidates[0] || null;
+}
+
 // 取得時刻の設定（@8:00,20:00形式の時刻リスト）
 function setFetchTimes(id, val){
   const f = follows.find(x=>x.id===id);
@@ -2053,6 +2078,29 @@ function setFetchTimes(id, val){
     });
   f.fetchTimes = times.join(',');
   save();
+  // 展開中なら次回予定の表示を更新
+  const nextEl = document.querySelector(`#fc-${id} .dp-schedule-next`);
+  const nextFt = nextFetchTime(f);
+  if(nextFt){
+    const now = new Date();
+    const sameDay = nextFt.getDate()===now.getDate() && nextFt.getMonth()===now.getMonth();
+    const dayLabel = sameDay ? '本日' : '明日';
+    const hh = String(nextFt.getHours()).padStart(2,'0');
+    const mm = String(nextFt.getMinutes()).padStart(2,'0');
+    const txt = `次回取得予定: ${dayLabel} ${hh}:${mm}`;
+    if(nextEl){ nextEl.textContent = txt; }
+    else {
+      const input = document.getElementById(`sched-${id}`);
+      if(input){
+        const span = document.createElement('span');
+        span.className = 'dp-schedule-next';
+        span.textContent = txt;
+        input.insertAdjacentElement('afterend', span);
+      }
+    }
+  } else if(nextEl){
+    nextEl.remove();
+  }
 }
 
 // 取得時刻スケジュールのチェック（1分ごとに呼ばれる）
@@ -2076,6 +2124,17 @@ function checkFetchSchedules(){
 }
 
 function renderDetail(f){
+  const nextFt = nextFetchTime(f);
+  const nextFtStr = nextFt
+    ? (()=>{
+        const now = new Date();
+        const sameDay = nextFt.getDate()===now.getDate() && nextFt.getMonth()===now.getMonth();
+        const dayLabel = sameDay ? '本日' : '明日';
+        const hh = String(nextFt.getHours()).padStart(2,'0');
+        const mm = String(nextFt.getMinutes()).padStart(2,'0');
+        return `${dayLabel} ${hh}:${mm}`;
+      })()
+    : null;
   const scheduleUI = `<div class="dp-schedule">
     <label class="dp-schedule-label">取得時刻
       <span class="dp-schedule-hint" title="毎日この時刻に自動取得します。複数指定はカンマ区切り。例: 8:00,20:00">?</span>
@@ -2085,6 +2144,7 @@ function renderDetail(f){
       placeholder="例: 8:00,20:00"
       onclick="event.stopPropagation()"
       onchange="setFetchTimes(${f.id}, this.value)">
+    ${nextFtStr ? `<span class="dp-schedule-next">次回取得予定: ${nextFtStr}</span>` : ''}
     <div class="dp-schedule-desc">毎日この時刻に自動取得（空欄で従来通り）</div>
   </div>`;
   if(f.loading) return scheduleUI + '<div class="dp-empty">読み込み中...</div>';
