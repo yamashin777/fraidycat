@@ -960,7 +960,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.81</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.82</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1006,10 +1006,11 @@ const COLORS = [
   {bg:'#EFEBE9',fg:'#3E2723',dark_bg:'#3E2723',dark_fg:'#BCAAA4'},
 ];
 
-const FREQS = ['5分','15分','30分','1時間','手動'];
+const FREQS = ['5分','15分','30分','1時間','6時間'];
 // 旧ラベル→新ラベルの移行マッピング
 const FREQ_MIGRATION = {
-  'リアルタイム':'5分','毎日':'1時間','毎週':'手動','毎月':'手動','毎年':'手動'
+  'リアルタイム':'5分','毎日':'1時間','毎週':'6時間','毎月':'6時間','毎年':'6時間',
+  '手動':'6時間'
 };
 const MARK_COLORS = {
   red:    {border:'#E00', bg:'#FFE5E5', darkBg:'#4A1010', label:'赤'},
@@ -1019,11 +1020,11 @@ const MARK_COLORS = {
 };
 const FREQ_PILL = {
   '5分':'fp-rt','15分':'fp-daily','30分':'fp-weekly',
-  '1時間':'fp-monthly','手動':'fp-yearly'
+  '1時間':'fp-monthly','6時間':'fp-yearly'
 };
 const FREQ_INTERVAL = {
   '5分':5*60*1000,'15分':15*60*1000,'30分':30*60*1000,
-  '1時間':60*60*1000,'手動':null
+  '1時間':60*60*1000,'6時間':6*60*60*1000
 };
 
 /* ── State ── */
@@ -1032,7 +1033,7 @@ let activeTag = 'すべて';
 let activeFreq = null;
 let expanded = null;
 let showModal = false;
-let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'手動',tags:'',memo:'',colorIdx:0};
+let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'6時間',tags:'',memo:'',colorIdx:0};
 let sortMode = 'freq';
 let searchQuery = '';
 let tagOrder = JSON.parse(localStorage.getItem('fraidycat_tag_order') || '[]');
@@ -1266,7 +1267,7 @@ function save(syncToGh=true){
 // 旧頻度ラベルを新ラベルに変換
 function migrateFreq(freq){
   if(FREQS.includes(freq)) return freq; // 既に新ラベル
-  return FREQ_MIGRATION[freq] || '手動'; // 不明な値は手動に
+  return FREQ_MIGRATION[freq] || '6時間'; // 不明な値は6時間に
 }
 
 function load(){
@@ -1928,8 +1929,8 @@ function changeFreq(id, freq){
   f.freq = freq;
   save();
   render();
-  // 手動以外に変更した場合は即フェッチ
-  if(freq !== '手動') enqueueFetch(f);
+  // 頻度変更時は即フェッチ
+  enqueueFetch(f);
 }
 
 /* タグ文字列をカンマ・半角スペース・全角スペースで分割 */
@@ -2965,7 +2966,7 @@ function renderMain(){
 /* ── Modal ── */
 function openModal(){
   showModal = true;
-  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'手動',tags:'',memo:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
+  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'6時間',tags:'',memo:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
   renderModal();
 }
 function closeModal(){ showModal=false; document.getElementById('modalContainer').innerHTML=''; }
@@ -3230,7 +3231,7 @@ function execImport(){
       registeredAt: Date.now() + i,
       name, url: p.url,
       platform: p.url.includes('youtube.com') ? 'YouTube' : 'RSS/ブログ',
-      freq: '手動',
+      freq: '6時間',
       tags: [p.tag],
       colorIdx: (follows.length + i) % COLORS.length,
       initials,
@@ -3341,7 +3342,7 @@ const FREQ_DESC = {
   '15分':  '15分ごとにチェック',
   '30分':  '30分ごとにチェック',
   '1時間': '1時間ごとにチェック',
-  '手動':  '自動更新なし',
+  '6時間': '6時間ごとにチェック',
 };
 
 function openBulkFreqModal(){
@@ -3415,10 +3416,8 @@ function execBulkFreq(){
   save();
   closeBulkFreqModal();
   render();
-  // 手動以外に変えた場合は即フェッチ
-  if(bulkFreqSelected !== '手動'){
-    targets.forEach((f, i) => setTimeout(() => fetchFollow(f), i * 300));
-  }
+  // 頻度変更時は即フェッチ
+  targets.forEach((f, i) => setTimeout(() => fetchFollow(f), i * 300));
 }
 
 /* ── 重複検出・統合 ── */
