@@ -169,6 +169,16 @@ body{display:flex;flex-direction:column;min-height:100vh}
   background:var(--border-strong);
 }
 .sb-count{margin-left:auto;font-size:11px;font-family:'DM Mono',monospace;color:var(--text-faint)}
+.sb-divider{
+  height:0;border-top:1px dashed var(--border-strong);
+  margin:5px 1.25rem;opacity:0.6;
+}
+.sb-btn-special{
+  font-style:italic;
+}
+.sb-btn-special .sb-dot{
+  border-radius:2px;
+}
 .sb-drag-handle{font-size:14px;color:var(--text-faint);cursor:grab;margin-right:4px;flex-shrink:0;user-select:none}
 .sb-tag-draggable.drag-over{border-color:var(--accent);background:var(--accent-light);}
 .sb-total{
@@ -950,7 +960,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.78</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.81</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -996,7 +1006,11 @@ const COLORS = [
   {bg:'#EFEBE9',fg:'#3E2723',dark_bg:'#3E2723',dark_fg:'#BCAAA4'},
 ];
 
-const FREQS = ['リアルタイム','毎日','毎週','毎月','毎年'];
+const FREQS = ['5分','15分','30分','1時間','手動'];
+// 旧ラベル→新ラベルの移行マッピング
+const FREQ_MIGRATION = {
+  'リアルタイム':'5分','毎日':'1時間','毎週':'手動','毎月':'手動','毎年':'手動'
+};
 const MARK_COLORS = {
   red:    {border:'#E00', bg:'#FFE5E5', darkBg:'#4A1010', label:'赤'},
   blue:   {border:'#07C', bg:'#E5F4FF', darkBg:'#0D2A4A', label:'青'},
@@ -1004,12 +1018,12 @@ const MARK_COLORS = {
   yellow: {border:'#E6B800', bg:'#FFFBE5', darkBg:'#3A3000', label:'黄'},
 };
 const FREQ_PILL = {
-  'リアルタイム':'fp-rt','毎日':'fp-daily','毎週':'fp-weekly',
-  '毎月':'fp-monthly','毎年':'fp-yearly'
+  '5分':'fp-rt','15分':'fp-daily','30分':'fp-weekly',
+  '1時間':'fp-monthly','手動':'fp-yearly'
 };
 const FREQ_INTERVAL = {
-  'リアルタイム':5*60*1000,'毎日':24*60*60*1000,'毎週':7*24*60*60*1000,
-  '毎月':30*24*60*60*1000,'毎年':365*24*60*60*1000
+  '5分':5*60*1000,'15分':15*60*1000,'30分':30*60*1000,
+  '1時間':60*60*1000,'手動':null
 };
 
 /* ── State ── */
@@ -1018,7 +1032,7 @@ let activeTag = 'すべて';
 let activeFreq = null;
 let expanded = null;
 let showModal = false;
-let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',memo:'',colorIdx:0};
+let formData = {name:'',url:'',platform:'RSS/ブログ',freq:'手動',tags:'',memo:'',colorIdx:0};
 let sortMode = 'freq';
 let searchQuery = '';
 let tagOrder = JSON.parse(localStorage.getItem('fraidycat_tag_order') || '[]');
@@ -1069,6 +1083,7 @@ async function loadFromGitHub(){
     }
     follows = followsData.map(f=>({
       ...f,
+      freq: migrateFreq(f.freq),
       registeredAt: f.registeredAt || f.id || Date.now(),
       posts: (f.posts||[]).map(p=>({
         ...p,
@@ -1248,6 +1263,12 @@ function save(syncToGh=true){
     if(syncToGh) scheduleSaveToGitHub();
   }catch(e){}
 }
+// 旧頻度ラベルを新ラベルに変換
+function migrateFreq(freq){
+  if(FREQS.includes(freq)) return freq; // 既に新ラベル
+  return FREQ_MIGRATION[freq] || '手動'; // 不明な値は手動に
+}
+
 function load(){
   try{
     const d = localStorage.getItem('fraidycat_follows');
@@ -1256,6 +1277,7 @@ function load(){
     if(!Array.isArray(parsed)) return;
     follows = parsed.map(f=>({
       ...f,
+      freq: migrateFreq(f.freq),
       // registeredAt未設定の場合はidをフォールバックとして使用（登録順は維持）
       registeredAt: f.registeredAt || f.id || Date.now(),
       posts: (f.posts||[]).map(p=>({
@@ -1585,8 +1607,10 @@ async function fetchFollow(f){
 
 function shouldRefetch(f){
   if(f.suspended) return false;
+  const interval = FREQ_INTERVAL[f.freq];
+  if(interval == null) return false; // 手動は自動更新しない
   if(!f.lastFetched) return true;
-  return Date.now() - f.lastFetched > FREQ_INTERVAL[f.freq];
+  return Date.now() - f.lastFetched > interval;
 }
 
 async function refreshAll(){
@@ -1904,7 +1928,8 @@ function changeFreq(id, freq){
   f.freq = freq;
   save();
   render();
-  if(freq === 'リアルタイム') enqueueFetch(f);
+  // 手動以外に変更した場合は即フェッチ
+  if(freq !== '手動') enqueueFetch(f);
 }
 
 /* タグ文字列をカンマ・半角スペース・全角スペースで分割 */
@@ -2135,8 +2160,25 @@ function renderDetail(f){
         return `${dayLabel} ${hh}:${mm}`;
       })()
     : null;
+  // 頻度ベースの次回更新予定
+  const freqInterval = FREQ_INTERVAL[f.freq];
+  let freqNextStr = null;
+  if(freqInterval != null && f.lastFetched){
+    const freqNext = new Date(f.lastFetched + freqInterval);
+    const now = new Date();
+    if(freqNext <= now){
+      freqNextStr = 'まもなく';
+    } else {
+      const sameDay = freqNext.getDate()===now.getDate() && freqNext.getMonth()===now.getMonth();
+      const hh = String(freqNext.getHours()).padStart(2,'0');
+      const mm = String(freqNext.getMinutes()).padStart(2,'0');
+      freqNextStr = sameDay ? `${hh}:${mm}` : `明日 ${hh}:${mm}`;
+    }
+  } else if(freqInterval != null && !f.lastFetched){
+    freqNextStr = 'まもなく';
+  }
   const scheduleUI = `<div class="dp-schedule">
-    <label class="dp-schedule-label">取得時刻
+    <label class="dp-schedule-label">個別指定
       <span class="dp-schedule-hint" title="毎日この時刻に自動取得します。複数指定はカンマ区切り。例: 8:00,20:00">?</span>
     </label>
     <input type="text" class="dp-schedule-input" id="sched-${f.id}"
@@ -2144,8 +2186,9 @@ function renderDetail(f){
       placeholder="例: 8:00,20:00"
       onclick="event.stopPropagation()"
       onchange="setFetchTimes(${f.id}, this.value)">
-    ${nextFtStr ? `<span class="dp-schedule-next">次回取得予定: ${nextFtStr}</span>` : ''}
-    <div class="dp-schedule-desc">毎日この時刻に自動取得（空欄で従来通り）</div>
+    ${nextFtStr ? `<span class="dp-schedule-next">時刻指定: ${nextFtStr}</span>` : ''}
+    ${freqNextStr ? `<span class="dp-schedule-next" style="background:var(--bg)">頻度(${esc(f.freq)})次回: ${freqNextStr}</span>` : ''}
+    <div class="dp-schedule-desc">毎日この時刻に自動取得（空欄で従来通り）。頻度タグでも定期取得されます。</div>
   </div>`;
   if(f.loading) return scheduleUI + '<div class="dp-empty">読み込み中...</div>';
   if(f.error) return scheduleUI + `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" onclick="fetchFollow(follows.find(x=>x.id===${f.id}))">再試行</button>`;
@@ -2485,6 +2528,12 @@ function openDrawer(){
       if(!cnt) return;
       html += makeBtn(`${fr}（${cnt}）`, '⏱', activeFreq===fr, fr, undefined);
     });
+    // 個別指定（取得時刻設定済み）を別枠で
+    const scheduledCount = follows.filter(f=>f.fetchTimes && f.fetchTimes.length>0).length;
+    if(scheduledCount > 0){
+      html += `<div style="height:0;border-top:1px dashed var(--border-strong);margin:4px 12px;opacity:.6"></div>`;
+      html += makeBtn(`個別指定（${scheduledCount}）`, '🕗', activeTag==='__scheduled__', undefined, '__scheduled__');
+    }
     if(favoriteCount > 0)
       html += makeBtn(`マーク済み（${favoriteCount}）`, '★', activeTag==='__favorite__', undefined, '__favorite__');
     if(suspendedCount > 0)
@@ -2577,6 +2626,16 @@ function renderSidebar(){
   if(activeFreq){
     html += `<button class="sb-btn" onclick="setFreq(null)">
       <div class="sb-dot"></div>すべて
+    </button>`;
+  }
+
+  // 個別指定（取得時刻が設定されたチャンネル）を別枠で表示
+  const scheduledCount = follows.filter(f=>f.fetchTimes && f.fetchTimes.length>0).length;
+  if(scheduledCount > 0){
+    html += `<div class="sb-divider"></div>`;
+    html += `<button class="sb-btn sb-btn-special${activeTag==='__scheduled__'?' active':''}" onclick="setTag('__scheduled__')">
+      <div class="sb-dot" style="background:var(--accent-mid)"></div>個別指定
+      <span class="sb-count">${scheduledCount}</span>
     </button>`;
   }
 
@@ -2864,6 +2923,7 @@ function renderMain(){
     }
     if(activeTag === '__suspended__') return f.suspended;
     if(activeTag === '__favorite__') return f.favorite;
+    if(activeTag === '__scheduled__') return f.fetchTimes && f.fetchTimes.length>0;
     if(activeTag !== 'すべて' && !f.tags.includes(activeTag)) return false;
     if(activeFreq && f.freq !== activeFreq) return false;
     return true;
@@ -2905,7 +2965,7 @@ function renderMain(){
 /* ── Modal ── */
 function openModal(){
   showModal = true;
-  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'毎週',tags:'',memo:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
+  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'手動',tags:'',memo:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
   renderModal();
 }
 function closeModal(){ showModal=false; document.getElementById('modalContainer').innerHTML=''; }
@@ -3053,7 +3113,12 @@ function toggleExpand(id){
     });
   }
 }
-function setTag(t){ activeTag=t; render(); }
+function setTag(t){
+  activeTag=t;
+  // 特殊フィルター選択時は頻度フィルターをクリア
+  if(t==='__scheduled__' || t==='__suspended__' || t==='__favorite__') activeFreq=null;
+  render();
+}
 function setFreq(f){ activeFreq=f; render(); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -3165,7 +3230,7 @@ function execImport(){
       registeredAt: Date.now() + i,
       name, url: p.url,
       platform: p.url.includes('youtube.com') ? 'YouTube' : 'RSS/ブログ',
-      freq: '毎週',
+      freq: '手動',
       tags: [p.tag],
       colorIdx: (follows.length + i) % COLORS.length,
       initials,
@@ -3268,19 +3333,19 @@ async function bulkFetchIcons(){
 }
 
 /* ── 頻度一括変更 ── */
-let bulkFreqSelected = 'リアルタイム';
+let bulkFreqSelected = '5分';
 let bulkTagSelected = null; // null=すべて
 
 const FREQ_DESC = {
-  'リアルタイム': '5分ごとにチェック',
-  '毎日':        '1日1回チェック',
-  '毎週':        '週1回チェック',
-  '毎月':        '月1回チェック',
-  '毎年':        '年1回チェック',
+  '5分':   '5分ごとにチェック',
+  '15分':  '15分ごとにチェック',
+  '30分':  '30分ごとにチェック',
+  '1時間': '1時間ごとにチェック',
+  '手動':  '自動更新なし',
 };
 
 function openBulkFreqModal(){
-  bulkFreqSelected = 'リアルタイム';
+  bulkFreqSelected = '5分';
   bulkTagSelected = null;
   renderBulkFreqModal();
 }
@@ -3350,8 +3415,8 @@ function execBulkFreq(){
   save();
   closeBulkFreqModal();
   render();
-  // リアルタイムに変えた場合は即フェッチ
-  if(bulkFreqSelected === 'リアルタイム'){
+  // 手動以外に変えた場合は即フェッチ
+  if(bulkFreqSelected !== '手動'){
     targets.forEach((f, i) => setTimeout(() => fetchFollow(f), i * 300));
   }
 }
@@ -3826,16 +3891,7 @@ if(ghSyncEnabled && ghToken && ghRepo){
         return;
       }
 
-      // 異常データチェック：頻度が1種類しかない場合はローカルを優先
-      const freqTypes = [...new Set(ghData.map(f=>f.freq))];
-      if(freqTypes.length <= 1 && follows.length > 0 && follows.length >= ghData.length){
-        console.warn('GitHub data seems corrupted (only 1 freq type), using local data');
-        ghSha = json.sha;
-        await saveToGitHub();
-        return;
-      }
-
-      // GitHubのデータ件数がローカルより大幅に少ない場合もローカル優先
+      // GitHubのデータ件数がローカルより大幅に少ない場合はローカル優先
       if(ghData.length < follows.length * 0.8){
         console.warn(`GitHub(${ghData.length}) << Local(${follows.length}), using local data`);
         ghSha = json.sha;
@@ -3853,6 +3909,7 @@ if(ghSyncEnabled && ghToken && ghRepo){
       }
       follows = ghData.map(f=>({
         ...f,
+        freq: migrateFreq(f.freq),
         registeredAt: f.registeredAt || f.id || Date.now(),
         posts: (f.posts||[]).map(p=>({
           ...p,
