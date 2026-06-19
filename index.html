@@ -960,7 +960,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.82</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.83</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1105,24 +1105,36 @@ async function loadFromGitHub(){
 function scheduleSaveToGitHub(){
   if(!ghSyncEnabled || !ghToken || !ghRepo) return;
   if(ghSaveTimer) clearTimeout(ghSaveTimer);
-  ghSaveTimer = setTimeout(saveToGitHub, 3000); // 3秒後に保存
+  ghSaveTimer = setTimeout(()=>saveToGitHub(), 3000); // 3秒後に保存
 }
 
-async function saveToGitHub(){
+let ghSaving = false; // 同時保存を防ぐロック
+let ghSavePending = false; // 保存中に来た要求を後で実行
+
+async function saveToGitHub(retryCount){
+  retryCount = retryCount || 0;
   if(!ghSyncEnabled || !ghToken || !ghRepo) return;
+  // 既に保存中なら、終わった後にもう一度だけ保存予約
+  if(ghSaving){ ghSavePending = true; return; }
+  ghSaving = true;
   try{
+    // 保存前に必ず最新SHAを取得（衝突予防）
+    try{
+      const head = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
+        {headers:{'Authorization':`token ${ghToken}`}});
+      if(head.ok){ const hj = await head.json(); ghSha = hj.sha; }
+    }catch(e){ /* SHA取得失敗時は既存のghShaで試行 */ }
+
     const data = follows.map(f=>({
       ...f,
       posts:(f.posts||[]).map(p=>({...p,date:p.date instanceof Date?p.date.toISOString():(p.date||null)}))
     }));
     const jsonStr = JSON.stringify({follows: data, tagOrder: tagOrder});
-    // TextEncoderで安全にBase64エンコード
     const bytes = new TextEncoder().encode(jsonStr);
     const binStr = Array.from(bytes).map(b=>String.fromCharCode(b)).join('');
     const content = btoa(binStr);
     const body = {message:`fraidycat sync ${new Date().toISOString()}`,content};
     if(ghSha) body.sha = ghSha;
-    console.log('GitHub PUT:', ghRepo, ghPath, 'sha:', ghSha);
     const res = await fetch(
       `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
       {method:'PUT',headers:{'Authorization':`token ${ghToken}`,'Content-Type':'application/json'},
@@ -1131,12 +1143,18 @@ async function saveToGitHub(){
     if(!res.ok){
       const err = await res.json().catch(()=>({}));
       console.warn('GitHub save error:', res.status, err.message);
-      setStatus('warn', `⚠ GitHub保存失敗: ${err.message||res.status}`);
-      if(res.status===409){
-        const r2 = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
-          {headers:{'Authorization':`token ${ghToken}`}});
-        if(r2.ok){ const j2=await r2.json(); ghSha=j2.sha; await saveToGitHub(); }
+      if(res.status===409 && retryCount < 3){
+        // SHA不一致: 最新SHAを取り直して再試行（最大3回・ロック保持のまま）
+        await new Promise(r=>setTimeout(r, 500));
+        try{
+          const h2 = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
+            {headers:{'Authorization':`token ${ghToken}`}});
+          if(h2.ok){ const hj2 = await h2.json(); ghSha = hj2.sha; }
+        }catch(e){}
+        ghSaving = false; // 再帰呼び出しのため一旦解除
+        return saveToGitHub(retryCount+1);
       }
+      setStatus('warn', `⚠ GitHub保存失敗: ${err.message||res.status}`);
       return;
     }
     const json = await res.json();
@@ -1146,6 +1164,13 @@ async function saveToGitHub(){
   }catch(e){
     console.warn('GitHub save error:', e);
     setStatus('warn', `⚠ GitHub保存エラー: ${e.message}`);
+  }finally{
+    ghSaving = false;
+    // 保存中に来た要求があれば、最新データで1回だけ再保存
+    if(ghSavePending){
+      ghSavePending = false;
+      setTimeout(()=>saveToGitHub(), 500);
+    }
   }
 }
 
@@ -3584,6 +3609,15 @@ function exportJSON(){
     }))
   };
   const json = JSON.stringify(data, null, 2);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+
+  if(isIOS){
+    // iOS/iPadOSはダウンロードが不安定なため、画面表示してコピー保存できるようにする
+    showExportModal(json);
+    return;
+  }
+
   const blob = new Blob([json], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3591,10 +3625,52 @@ function exportJSON(){
   a.download = `fraidycat_${new Date().toISOString().slice(0,10)}.json`;
   a.style.display = 'none';
   document.body.appendChild(a);
-  // iOSはclick()が動作しないのでtouchイベントも発火
   a.click();
-  a.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window}));
   setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 2000);
+}
+
+// iOS向け: JSONを画面表示してコピー/ファイル保存できるモーダル
+function showExportModal(json){
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const fname = `fraidycat_${new Date().toISOString().slice(0,10)}.json`;
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="if(event.target===this){this.innerHTML='';document.getElementById('modalContainer').innerHTML=''}">
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
+      <h2>JSONエクスポート（${follows.length}件）</h2>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
+        下のボタンでコピーするか、リンクを長押し→「リンク先のファイルをダウンロード」で保存できます。
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn-ok" onclick="copyExportJson(this)">クリップボードにコピー</button>
+        <a class="btn-ok" href="${url}" download="${fname}"
+           style="text-decoration:none;display:inline-flex;align-items:center"
+           target="_blank" rel="noopener">ファイルとして開く</a>
+      </div>
+      <textarea id="exportJsonArea" readonly
+        style="width:100%;height:240px;font-family:'DM Mono',monospace;font-size:11px;
+        border:1px solid var(--border-strong);border-radius:8px;padding:8px;
+        background:var(--bg);color:var(--text);resize:vertical;-webkit-user-select:all;user-select:all"
+        onclick="this.select()">${esc(json)}</textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">閉じる</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function copyExportJson(btn){
+  const ta = document.getElementById('exportJsonArea');
+  if(!ta) return;
+  const text = ta.value;
+  const done = ()=>{ const o=btn.textContent; btn.textContent='コピーしました'; setTimeout(()=>btn.textContent=o,1500); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>{
+      ta.select(); document.execCommand('copy'); done();
+    });
+  } else {
+    ta.select(); document.execCommand('copy'); done();
+  }
 }
 
 function importJSON(event){
