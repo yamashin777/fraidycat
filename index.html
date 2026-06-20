@@ -967,7 +967,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.87</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.88</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2216,13 +2216,13 @@ function checkFetchSchedules(){
   });
 }
 
-// 登録者数を万単位で整形（例: 12345→1.2万, 3456789→345万）
+// 登録者数を万単位で整形（例: 12345→1.2万人, 3456789→345万人）
 function fmtSubscribers(n){
   if(n == null || isNaN(n)) return '';
-  if(n < 10000) return n.toLocaleString('ja-JP'); // 1万未満は実数
+  if(n < 10000) return n.toLocaleString('ja-JP') + '人'; // 1万未満は実数
   const man = n / 10000;
-  if(man < 10) return man.toFixed(1).replace(/\.0$/,'') + '万'; // 1.2万
-  return Math.round(man) + '万'; // 345万
+  if(man < 10) return man.toFixed(1).replace(/\.0$/,'') + '万人'; // 1.2万人
+  return Math.round(man) + '万人'; // 345万人
 }
 
 function renderDetail(f){
