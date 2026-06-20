@@ -967,7 +967,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.85</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.86</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1109,10 +1109,14 @@ async function loadFromGitHub(){
 }
 
 /* GitHubにデータを保存（デバウンス付き） */
+let ghLastSaveAt = 0;
 function scheduleSaveToGitHub(){
   if(!ghSyncEnabled || !ghToken || !ghRepo) return;
   if(ghSaveTimer) clearTimeout(ghSaveTimer);
-  ghSaveTimer = setTimeout(()=>saveToGitHub(), 3000); // 3秒後に保存
+  // 連続呼び出しをまとめる。前回保存から間もない場合はさらに延ばす
+  const sinceLast = Date.now() - ghLastSaveAt;
+  const delay = sinceLast < 15000 ? 12000 : 5000;
+  ghSaveTimer = setTimeout(()=>saveToGitHub(), delay);
 }
 
 let ghSaving = false; // 同時保存を防ぐロック
@@ -1166,6 +1170,7 @@ async function saveToGitHub(retryCount){
     }
     const json = await res.json();
     ghSha = json.content?.sha;
+    ghLastSaveAt = Date.now();
     console.log('GitHub save OK, sha:', ghSha);
     setStatus('ok', `GitHub同期完了: ${new Date().toLocaleTimeString('ja-JP')}`);
   }catch(e){
@@ -1173,10 +1178,10 @@ async function saveToGitHub(retryCount){
     setStatus('warn', `⚠ GitHub保存エラー: ${e.message}`);
   }finally{
     ghSaving = false;
-    // 保存中に来た要求があれば、最新データで1回だけ再保存
+    // 保存中に来た要求があれば、デバウンス経由で1回だけ再保存（連続コミット防止）
     if(ghSavePending){
       ghSavePending = false;
-      setTimeout(()=>saveToGitHub(), 500);
+      scheduleSaveToGitHub();
     }
   }
 }
@@ -3373,7 +3378,7 @@ async function bulkFetchIcons(){
         const subCount = item?.statistics?.subscriberCount;
         if(subCount != null) f.subscriberCount = parseInt(subCount);
       });
-      save();
+      save(false); // ループ中はlocalStorageのみ（GitHub連続コミット防止）
       setStatus('loading', `アイコンを取得中... ${done}/${targets.length}件`);
       if(i+CHUNK < targets.length) await new Promise(r=>setTimeout(r,200));
     }catch(e){
@@ -3382,6 +3387,7 @@ async function bulkFetchIcons(){
   }
 
   debouncedRender();
+  save(); // 完了後に1回だけGitHub同期
   setStatus('ok', `アイコンを取得しました（${done}件）`);
 }
 
@@ -4068,11 +4074,12 @@ setTimeout(async ()=>{
         const subCount = itemMap[chId]?.statistics?.subscriberCount;
         if(subCount != null) f.subscriberCount = parseInt(subCount);
       });
-      save();
+      save(false); // ループ中はlocalStorageのみ
       if(i+CHUNK < noIcon.length) await new Promise(r=>setTimeout(r,300));
     }catch(e){ break; }
   }
   debouncedRender();
+  save(); // 完了後に1回だけGitHub同期
 }, 5000);
 </script>
 </body>
