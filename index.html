@@ -382,6 +382,12 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .fp-weekly{background:#5A3A0022;color:var(--pill-weekly)}
 .fp-monthly{background:#4A1A6B22;color:var(--pill-monthly)}
 .fp-yearly{background:#5A1A1A22;color:var(--pill-yearly)}
+.sched-pill{
+  font-size:10px;font-family:'DM Mono',monospace;
+  padding:2px 7px;border-radius:99px;white-space:nowrap;
+  background:var(--accent-mid);color:#fff;
+  display:inline-flex;align-items:center;
+}
 .fc-ago{font-size:11px;color:var(--text-faint);font-family:'DM Mono',monospace;min-width:48px;text-align:right}
 .fc-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -968,7 +974,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.90</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.91</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1793,6 +1799,7 @@ function renderFollowCard(f){
           ${f.memo ? `<span class="fc-memo-inline">📝 <span onclick="event.stopPropagation()">${linkifyMemo(f.memo)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
           <span class="freq-pill ${pillClass}">${f.freq}</span>
+          ${f.fetchTimes && f.fetchTimes.length>0 ? `<span class="sched-pill" title="個別指定: ${esc(f.fetchTimes)}">個別指定</span>` : ''}
           <span class="fc-ago" title="最終確認時刻">${agoText}</span>
           <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
           <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})" title="登録日">📅</button>
