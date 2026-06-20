@@ -28,7 +28,7 @@
   --pill-monthly: #4A1A6B;
   --pill-yearly: #5A1A1A;
 }
-@media(prefers-color-scheme:dark){
+@media(prefers-color-scheme:dark) and (max-width:0px){
   :root{
     --bg:#151310;--surface:#1E1C18;--border:#2E2B25;--border-strong:#3E3B34;
     --text:#EDE8DF;--text-muted:#8A857C;--text-faint:#5A5650;
@@ -92,7 +92,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
   border-color:#7A5A9A;color:#7A5A9A;
 }
 .hdr-btn.api:hover{background:#F0EBF8;color:#4A2A6A}
-@media(prefers-color-scheme:dark){
+@media(prefers-color-scheme:dark) and (max-width:0px){
   .hdr-btn.data{border-color:#6A9ABE;color:#6A9ABE}
   .hdr-btn.data:hover{background:#1A2A3A;color:#8ABADE}
   .hdr-btn.api{border-color:#9A6ABE;color:#9A6ABE}
@@ -418,7 +418,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .dp-dur[data-upcoming="true"]{background:#1565C0;color:#fff;border-color:#0D47A1;font-weight:500;}
 .dp-dur[data-live-archive="true"]{background:var(--tag-bg);color:var(--text-faint);border-color:var(--border);}
 .dp-dur[data-short="true"]{background:#E8EAF0;color:#4A5580;border-color:#B0B8D0;}
-@media(prefers-color-scheme:dark){
+@media(prefers-color-scheme:dark) and (max-width:0px){
   .dp-dur[data-short="true"]{background:#2A2E45;color:#8B9CC8;border-color:#3A4060;}
   .tl-dur[data-short="true"]{background:#2A2E45;color:#8B9CC8;}
 }
@@ -885,6 +885,8 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <button class="sort-bar-btn" id="pcSortRegDesc" onclick="setSortMode('registered-desc')" title="最近登録したチャンネルを上に表示">🆕 登録新しい順</button>
   <button class="sort-bar-btn" id="pcSortRegAsc"  onclick="setSortMode('registered-asc')" title="最初に登録したチャンネルを上に表示">🕰 登録古い順</button>
   <button class="sort-bar-btn" id="pcSortSubDesc" onclick="setSortMode('subscribers-desc')" title="チャンネル登録者数の多い順に表示">👥 登録者数順</button>
+  <button class="sort-bar-btn" id="pcSortFetchDesc" onclick="setSortMode('fetched-desc')" title="最近RSSを取得したチャンネルを上に表示">🔄 取得新しい順</button>
+  <button class="sort-bar-btn" id="pcSortFetchAsc" onclick="setSortMode('fetched-asc')" title="取得が古いチャンネルを上に表示">⏳ 取得古い順</button>
   <div class="search-box">
     <input class="search-input" id="searchInput" type="text"
       placeholder="🔍 チャンネル名を検索..."
@@ -974,7 +976,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.91</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.93</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1702,7 +1704,7 @@ function allTags(){
 }
 
 function colorOf(f){return COLORS[f.colorIdx % COLORS.length]}
-function isDark(){return window.matchMedia('(prefers-color-scheme:dark)').matches}
+function isDark(){return false;}
 
 function renderFollowCard(f){
   const isExp = expanded === f.id;
@@ -2503,6 +2505,8 @@ const SORT_LABELS = {
   'registered-desc':   {icon:'🆕', label:'登録新しい順'},
   'registered-asc':    {icon:'🕰', label:'登録古い順'},
   'subscribers-desc':  {icon:'👥', label:'登録者数順'},
+  'fetched-desc':      {icon:'🔄', label:'取得新しい順'},
+  'fetched-asc':       {icon:'⏳', label:'取得古い順'},
 };
 
 function updateSortBtn(){
@@ -2511,6 +2515,7 @@ function updateSortBtn(){
     'duration-desc':'pcSortDurDesc','duration-asc':'pcSortDurAsc',
     'registered-desc':'pcSortRegDesc','registered-asc':'pcSortRegAsc',
     'subscribers-desc':'pcSortSubDesc',
+    'fetched-desc':'pcSortFetchDesc','fetched-asc':'pcSortFetchAsc',
   };
   Object.entries(pcMap).forEach(([mode,id])=>{
     const el = document.getElementById(id);
@@ -2630,6 +2635,8 @@ function openDrawer(){
     html += makeBtn('登録 新しい順', '🆕', sortMode==='registered-desc', undefined, undefined, 'registered-desc');
     html += makeBtn('登録 古い順', '🕰', sortMode==='registered-asc', undefined, undefined, 'registered-asc');
     html += makeBtn('登録者数順', '👥', sortMode==='subscribers-desc', undefined, undefined, 'subscribers-desc');
+    html += makeBtn('取得 新しい順', '🔄', sortMode==='fetched-desc', undefined, undefined, 'fetched-desc');
+    html += makeBtn('取得 古い順', '⏳', sortMode==='fetched-asc', undefined, undefined, 'fetched-asc');
 
     freqDiv.innerHTML = html;
 
@@ -3047,6 +3054,14 @@ function renderMain(){
     renderChannelList(filtered);
   } else if(sortMode === 'subscribers-desc'){
     filtered.sort((a,b)=>(b.subscriberCount||0)-(a.subscriberCount||0));
+    currentFiltered = filtered;
+    renderChannelList(filtered);
+  } else if(sortMode === 'fetched-desc' || sortMode === 'fetched-asc'){
+    filtered.sort((a,b)=>{
+      const fa = a.lastFetched || 0;
+      const fb = b.lastFetched || 0;
+      return sortMode === 'fetched-desc' ? fb - fa : fa - fb;
+    });
     currentFiltered = filtered;
     renderChannelList(filtered);
   } else {
@@ -3600,7 +3615,7 @@ function closeDuplicateModal(){
 }
 
 function renderDuplicateModal(){
-  const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const isDark = false;
 
   let content = '';
   if(dupGroups.length === 0){
