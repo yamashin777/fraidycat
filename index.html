@@ -967,7 +967,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.88</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.89</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -3350,7 +3350,7 @@ async function fetchIconForFollow(f){
     const json = await res.json();
     const iconUrl = json.items?.[0]?.snippet?.thumbnails?.default?.url;
     const subCount = json.items?.[0]?.statistics?.subscriberCount;
-    if(subCount != null) f.subscriberCount = parseInt(subCount);
+    if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
     if(iconUrl){
       f.iconUrl = iconUrl;
       save();
@@ -3399,7 +3399,7 @@ async function bulkFetchIcons(){
         const iconUrl = item?.snippet?.thumbnails?.default?.url;
         if(iconUrl){ f.iconUrl = iconUrl; done++; }
         const subCount = item?.statistics?.subscriberCount;
-        if(subCount != null) f.subscriberCount = parseInt(subCount);
+        if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
       });
       save(false); // ループ中はlocalStorageのみ（GitHub連続コミット防止）
       setStatus('loading', `アイコンを取得中... ${done}/${targets.length}件`);
@@ -3662,7 +3662,7 @@ function exportJSON(){
       tags: f.tags, colorIdx: f.colorIdx, initials: f.initials,
       memo: f.memo, markColor: f.markColor, suspended: f.suspended,
       registeredAt: f.registeredAt, favorite: f.favorite, fetchTimes: f.fetchTimes,
-      subscriberCount: f.subscriberCount,
+      subscriberCount: f.subscriberCount, subscriberFetchedAt: f.subscriberFetchedAt,
     }))
   };
   const json = JSON.stringify(data, null, 2);
@@ -4072,14 +4072,23 @@ if(follows.length){
   setTimeout(scheduleNext, 1000);
 }
 
-/* 起動時アイコン自動取得（APIキーがある場合・5秒後にサイレント実行） */
+/* 起動時アイコン・登録者数自動取得（APIキーがある場合・5秒後にサイレント実行） */
 setTimeout(async ()=>{
   if(!ytApiKey) return;
-  const noIcon = follows.filter(f=>!f.iconUrl && ytChannelIdFromUrl(f.url));
-  if(!noIcon.length) return;
+  const SUB_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 登録者数は30日で再取得
+  const now = Date.now();
+  // アイコン未取得、または登録者数が未取得/30日以上前のチャンネル
+  const needFetch = follows.filter(f=>{
+    if(!ytChannelIdFromUrl(f.url)) return false;
+    if(!f.iconUrl) return true;
+    if(f.subscriberCount == null) return true;
+    if(!f.subscriberFetchedAt || (now - f.subscriberFetchedAt) > SUB_MAX_AGE) return true;
+    return false;
+  });
+  if(!needFetch.length) return;
   const CHUNK = 50;
-  for(let i=0; i<noIcon.length; i+=CHUNK){
-    const chunk = noIcon.slice(i, i+CHUNK);
+  for(let i=0; i<needFetch.length; i+=CHUNK){
+    const chunk = needFetch.slice(i, i+CHUNK);
     const ids = chunk.map(f=>ytChannelIdFromUrl(f.url)).join(',');
     try{
       const res = await fetch(
@@ -4095,10 +4104,10 @@ setTimeout(async ()=>{
         const iconUrl = itemMap[chId]?.snippet?.thumbnails?.default?.url;
         if(iconUrl) f.iconUrl = iconUrl;
         const subCount = itemMap[chId]?.statistics?.subscriberCount;
-        if(subCount != null) f.subscriberCount = parseInt(subCount);
+        if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
       });
       save(false); // ループ中はlocalStorageのみ
-      if(i+CHUNK < noIcon.length) await new Promise(r=>setTimeout(r,300));
+      if(i+CHUNK < needFetch.length) await new Promise(r=>setTimeout(r,300));
     }catch(e){ break; }
   }
   debouncedRender();
