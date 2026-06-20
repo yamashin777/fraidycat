@@ -588,9 +588,16 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   }
   .fc-preview-spacer{flex:1;}
 }
-.fc-avatar-mobile{display:none;}
+.fc-avatar-mobile{display:flex;}
+.fc-sub-count{
+  font-size:9px;line-height:1;color:var(--text-faint);
+  font-family:'DM Mono',monospace;white-space:nowrap;
+}
+@media(min-width:641px){
+  .fc-avatar-mobile-wrap{display:none !important;}
+}
 @media(max-width:640px){
-  .fc-avatar-mobile{display:flex;}
+  .fc-avatar-mobile-wrap{display:flex !important;}
 }
 .fc-preview-title:hover{color:var(--accent);}
 .fc-reg-date{
@@ -616,7 +623,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 }
 .dp-schedule-input{
   font-size:13px;padding:4px 10px;border-radius:6px;
-  border:1px solid var(--border-strong);background:var(--bg);
+  border:1px solid var(--border-strong);background:var(--surface);
   color:var(--text);font-family:'DM Mono',monospace;
   width:140px;outline:none;
 }
@@ -960,7 +967,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.83</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.85</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1731,9 +1738,12 @@ function renderFollowCard(f){
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
     <div class="fc-row">
       <!-- PCではfc-previewにアイコンを表示、スマホではここに表示 -->
-      <div class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
-        ${f.iconUrl ? `<img src="${esc(f.iconUrl)}?v=${f.id}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
-        ${f.initials}
+      <div class="fc-avatar-mobile-wrap" style="display:none;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
+        <div class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
+          ${f.iconUrl ? `<img src="${esc(f.iconUrl)}?v=${f.id}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
+          ${f.initials}
+        </div>
+        ${fmtSubscribers(f.subscriberCount)?`<span class="fc-sub-count">${fmtSubscribers(f.subscriberCount)}</span>`:''}
       </div>
       <div class="fc-body">
         <div class="fc-top">
@@ -1780,10 +1790,14 @@ function renderFollowCard(f){
                 style="width:${twPc}px;height:${thPc}px;object-fit:cover;border-radius:3px;display:block">
             </a>` : '';
         // 1件目の左にアイコン、右に頻度・ボタン（PCのみ）
+        const subStr = fmtSubscribers(f.subscriberCount);
         const leftAvatar = pi===0
-          ? `<div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
-              ${f.iconUrl?`<img src="${esc(f.iconUrl)}?v=${f.id}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
-              ${esc(f.initials)}
+          ? `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
+              <div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
+                ${f.iconUrl?`<img src="${esc(f.iconUrl)}?v=${f.id}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
+                ${esc(f.initials)}
+              </div>
+              ${subStr?`<span class="fc-sub-count">${subStr}</span>`:''}
             </div>`
           : `<div style="width:34px;flex-shrink:0"></div>`;
         const rightButtons = '';
@@ -2174,6 +2188,15 @@ function checkFetchSchedules(){
   });
 }
 
+// 登録者数を万単位で整形（例: 12345→1.2万, 3456789→345万）
+function fmtSubscribers(n){
+  if(n == null || isNaN(n)) return '';
+  if(n < 10000) return n.toLocaleString('ja-JP'); // 1万未満は実数
+  const man = n / 10000;
+  if(man < 10) return man.toFixed(1).replace(/\.0$/,'') + '万'; // 1.2万
+  return Math.round(man) + '万'; // 345万
+}
+
 function renderDetail(f){
   const nextFt = nextFetchTime(f);
   const nextFtStr = nextFt
@@ -2213,7 +2236,7 @@ function renderDetail(f){
       onclick="event.stopPropagation()"
       onchange="setFetchTimes(${f.id}, this.value)">
     ${nextFtStr ? `<span class="dp-schedule-next">時刻指定: ${nextFtStr}</span>` : ''}
-    ${freqNextStr ? `<span class="dp-schedule-next" style="background:var(--bg)">頻度(${esc(f.freq)})次回: ${freqNextStr}</span>` : ''}
+    ${freqNextStr ? `<span class="dp-schedule-next" style="background:var(--surface)">頻度(${esc(f.freq)})次回: ${freqNextStr}</span>` : ''}
     <div class="dp-schedule-desc">毎日この時刻に自動取得（空欄で従来通り）。頻度タグでも定期取得されます。</div>
   </div>`;
   if(f.loading) return scheduleUI + '<div class="dp-empty">読み込み中...</div>';
@@ -3292,12 +3315,14 @@ async function fetchIconForFollow(f){
   if(!chId) return;
   try{
     const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${chId}&key=${ytApiKey}`,
+      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${chId}&key=${ytApiKey}`,
       {signal: AbortSignal.timeout(10000)}
     );
     if(!res.ok) return;
     const json = await res.json();
     const iconUrl = json.items?.[0]?.snippet?.thumbnails?.default?.url;
+    const subCount = json.items?.[0]?.statistics?.subscriberCount;
+    if(subCount != null) f.subscriberCount = parseInt(subCount);
     if(iconUrl){
       f.iconUrl = iconUrl;
       save();
@@ -3329,7 +3354,7 @@ async function bulkFetchIcons(){
     const ids = chunk.map(f=>ytChannelIdFromUrl(f.url)).join(',');
     try{
       const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${ids}&key=${ytApiKey}&maxResults=50`,
+        `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${ids}&key=${ytApiKey}&maxResults=50`,
         {signal: AbortSignal.timeout(15000)}
       );
       if(!res.ok){
@@ -3345,6 +3370,8 @@ async function bulkFetchIcons(){
         const item = itemMap[chId];
         const iconUrl = item?.snippet?.thumbnails?.default?.url;
         if(iconUrl){ f.iconUrl = iconUrl; done++; }
+        const subCount = item?.statistics?.subscriberCount;
+        if(subCount != null) f.subscriberCount = parseInt(subCount);
       });
       save();
       setStatus('loading', `アイコンを取得中... ${done}/${targets.length}件`);
@@ -3606,6 +3633,7 @@ function exportJSON(){
       tags: f.tags, colorIdx: f.colorIdx, initials: f.initials,
       memo: f.memo, markColor: f.markColor, suspended: f.suspended,
       registeredAt: f.registeredAt, favorite: f.favorite, fetchTimes: f.fetchTimes,
+      subscriberCount: f.subscriberCount,
     }))
   };
   const json = JSON.stringify(data, null, 2);
@@ -4026,7 +4054,7 @@ setTimeout(async ()=>{
     const ids = chunk.map(f=>ytChannelIdFromUrl(f.url)).join(',');
     try{
       const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${ids}&key=${ytApiKey}&maxResults=50`,
+        `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${ids}&key=${ytApiKey}&maxResults=50`,
         {signal: AbortSignal.timeout(15000)}
       );
       if(!res.ok) break;
@@ -4037,6 +4065,8 @@ setTimeout(async ()=>{
         const chId = ytChannelIdFromUrl(f.url);
         const iconUrl = itemMap[chId]?.snippet?.thumbnails?.default?.url;
         if(iconUrl) f.iconUrl = iconUrl;
+        const subCount = itemMap[chId]?.statistics?.subscriberCount;
+        if(subCount != null) f.subscriberCount = parseInt(subCount);
       });
       save();
       if(i+CHUNK < noIcon.length) await new Promise(r=>setTimeout(r,300));
