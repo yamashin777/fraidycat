@@ -320,6 +320,9 @@ body{display:flex;flex-direction:column;min-height:100vh}
 }
 .follow-card:hover{border-color:var(--border-strong)}
 .follow-card.expanded{border-color:var(--border-strong)}
+.follow-card.suspended{opacity:0.55;filter:grayscale(0.8);background:#F4F4F2;}
+.follow-card.suspended:hover{opacity:0.8;}
+.follow-card.suspended.expanded{opacity:1;filter:none;}
 .fc-row{
   display:flex;align-items:flex-start;gap:8px;padding:2px 8px 0;
   cursor:pointer;user-select:none;width:100%;
@@ -976,7 +979,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.93</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.95</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1314,6 +1317,11 @@ function save(syncToGh=true){
 function migrateFreq(freq){
   if(FREQS.includes(freq)) return freq; // 既に新ラベル
   return FREQ_MIGRATION[freq] || '6時間'; // 不明な値は6時間に
+}
+
+// 頻度の表示用ラベル（内部値はそのまま、表示時に「毎」を付ける）
+function freqLabel(freq){
+  return freq ? freq + '毎' : freq;
 }
 
 function load(){
@@ -1722,7 +1730,7 @@ function renderFollowCard(f){
       <span class="fc-freq-label">更新頻度：</span>
       <div class="fc-freq-btns">
         ${FREQS.map(fr=>`<button class="fc-freq-btn${f.freq===fr?' active':''}"
-          onclick="changeFreq(${f.id},'${fr}')">${fr}</button>`).join('')}
+          onclick="changeFreq(${f.id},'${fr}')">${freqLabel(fr)}</button>`).join('')}
       </div>
       <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}),false)">↻ 今すぐ更新</button>
       ${f.suspended ? `<button class="fc-refresh-btn" style="color:var(--accent-mid);border-color:var(--accent-mid)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=false;save();render()">▶ 更新を再開</button>` : `<button class="fc-refresh-btn" style="color:var(--text-faint)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=true;save();render()">⏸ 更新外にする</button>`}
@@ -1770,7 +1778,7 @@ function renderFollowCard(f){
   const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
   const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
   return `
-  <div class="follow-card${isExp?' expanded':''}" id="fc-${f.id}"${markBg?` style="background:${markBg}"`:''}
+  <div class="follow-card${isExp?' expanded':''}${f.suspended?' suspended':''}" id="fc-${f.id}"${markBg?` style="background:${markBg}"`:''}
     onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn,a,.dp-dur'))toggleExpand(${f.id})"
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
     <div class="fc-row">
@@ -1800,7 +1808,7 @@ function renderFollowCard(f){
           ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span onclick="event.stopPropagation()">${linkifyMemo(f.memo)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
-          <span class="freq-pill ${pillClass}">${f.freq}</span>
+          <span class="freq-pill ${pillClass}">${freqLabel(f.freq)}</span>
           ${f.fetchTimes && f.fetchTimes.length>0 ? `<span class="sched-pill" title="個別指定: ${esc(f.fetchTimes)}">個別指定</span>` : ''}
           <span class="fc-ago" title="最終確認時刻">${agoText}</span>
           <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
@@ -2274,7 +2282,7 @@ function renderDetail(f){
       onclick="event.stopPropagation()"
       onchange="setFetchTimes(${f.id}, this.value)">
     ${nextFtStr ? `<span class="dp-schedule-next">時刻指定: ${nextFtStr}</span>` : ''}
-    ${freqNextStr ? `<span class="dp-schedule-next" style="background:var(--surface)">頻度(${esc(f.freq)})次回: ${freqNextStr}</span>` : ''}
+    ${freqNextStr ? `<span class="dp-schedule-next" style="background:var(--surface)">頻度(${esc(freqLabel(f.freq))})次回: ${freqNextStr}</span>` : ''}
     <div class="dp-schedule-desc">毎日この時刻に自動取得（空欄で従来通り）。頻度タグでも定期取得されます。</div>
   </div>`;
   if(f.loading) return scheduleUI + '<div class="dp-empty">読み込み中...</div>';
@@ -2618,7 +2626,7 @@ function openDrawer(){
     allFreqs.forEach(fr=>{
       const cnt = freqCounts[fr]||0;
       if(!cnt) return;
-      html += makeBtn(`${fr}（${cnt}）`, '⏱', activeFreq===fr, fr, undefined);
+      html += makeBtn(`${freqLabel(fr)}（${cnt}）`, '⏱', activeFreq===fr, fr, undefined);
     });
     // 個別指定（取得時刻設定済み）を別枠で
     const scheduledCount = follows.filter(f=>f.fetchTimes && f.fetchTimes.length>0).length;
@@ -2714,7 +2722,7 @@ function renderSidebar(){
     const cnt = freqCounts[fr] || 0;
     if(!cnt) return;
     html += `<button class="sb-btn${activeFreq===fr?' active':''}" onclick="setFreq('${fr}')">
-      <div class="sb-dot"></div>${fr}
+      <div class="sb-dot"></div>${freqLabel(fr)}
       <span class="sb-count">${cnt}</span>
     </button>`;
   });
@@ -3480,7 +3488,7 @@ function renderBulkFreqModal(){
     <div class="freq-option${fr === bulkFreqSelected ? ' selected' : ''}"
          onclick="bulkFreqSelected='${fr}';renderBulkFreqModal()">
       <div>
-        <div class="freq-option-label">${fr}</div>
+        <div class="freq-option-label">${freqLabel(fr)}</div>
         <div class="freq-option-desc">${FREQ_DESC[fr]}</div>
       </div>
       <span class="freq-option-check">✓</span>
