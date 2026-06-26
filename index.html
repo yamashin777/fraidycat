@@ -3,11 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light only">
 <title>Fraidycat Clone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
 <style>
 :root {
+  color-scheme: light only;
   --bg: #F5F2EB;
   --surface: #FDFCF9;
   --border: #E2DDD4;
@@ -320,6 +322,21 @@ body{display:flex;flex-direction:column;min-height:100vh}
 }
 .follow-card:hover{border-color:var(--border-strong)}
 .follow-card.expanded{border-color:var(--border-strong)}
+.refresh-flash{
+  background:var(--accent-mid) !important;
+  color:#fff !important;
+  transform:scale(0.94);
+  transition:transform .1s, background .1s;
+}
+#toast{
+  position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(20px);
+  background:var(--accent-mid);color:#fff;
+  padding:10px 20px;border-radius:99px;font-size:13px;font-weight:500;
+  box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:9999;
+  opacity:0;pointer-events:none;transition:opacity .25s, transform .25s;
+  white-space:nowrap;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 .follow-card.suspended{opacity:0.55;filter:grayscale(0.8);background:#F4F4F2;}
 .follow-card.suspended:hover{opacity:0.8;}
 .follow-card.suspended.expanded{opacity:1;filter:none;}
@@ -979,7 +996,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.97</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.99</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1700,6 +1717,13 @@ function shouldRefetch(f){
 }
 
 async function refreshAll(){
+  document.querySelectorAll('.hdr-btn.refresh, .bnav-btn, .drawer-btn').forEach(btn=>{
+    if(/更新/.test(btn.textContent)){
+      btn.classList.add('refresh-flash');
+      setTimeout(()=>btn.classList.remove('refresh-flash'), 600);
+    }
+  });
+  showToast('更新を開始しました');
   const targets = follows.filter(f=>!f.suspended);
   fetchTotal = targets.length;
   fetchDone = 0;
@@ -1710,6 +1734,20 @@ async function refreshAll(){
     fetchQueue.push(f);
   });
   drainQueue();
+}
+
+let toastTimer = null;
+function showToast(msg){
+  let el = document.getElementById('toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 1800);
 }
 
 /* ── Render ── */
