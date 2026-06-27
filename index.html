@@ -328,6 +328,30 @@ body{display:flex;flex-direction:column;min-height:100vh}
   transform:scale(0.94);
   transition:transform .1s, background .1s;
 }
+#progressBar{
+  position:fixed;top:0;left:0;right:0;height:26px;z-index:10000;
+  background:rgba(0,0,0,0.04);
+  transform:translateY(-100%);transition:transform .3s;
+  display:flex;align-items:center;overflow:hidden;
+}
+#progressBar.show{transform:translateY(0);}
+#progressBarFill{
+  position:absolute;top:0;left:0;height:100%;
+  background:var(--accent-mid);opacity:0.25;
+  transition:width .3s ease;
+}
+#progressBarFill.indeterminate{
+  width:40% !important;
+  animation:progressSlide 1.2s ease-in-out infinite;
+}
+@keyframes progressSlide{
+  0%{left:-40%;}100%{left:100%;}
+}
+#progressBarText{
+  position:relative;z-index:1;width:100%;text-align:center;
+  font-size:12px;font-weight:500;color:var(--text);
+  font-family:'DM Sans',sans-serif;
+}
 #toast{
   position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(20px);
   background:var(--accent-mid);color:#fff;
@@ -610,7 +634,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   .fc-right-inline{display:flex;}
   .fc-preview-title{
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    flex:none;max-width:45%;
+    flex:none;max-width:80%;
   }
   .fc-preview-spacer{flex:1;}
 }
@@ -996,7 +1020,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0510.99</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.01</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1303,15 +1327,51 @@ function updateFetchStatus(){
     if(errs) setStatus('err', `${errs}件のエラー`);
     else setStatus('ok', `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`);
     fetchTotal = 0; fetchDone = 0; currentFetchingName = '';
+    hideProgressBar();
   } else {
     if(fetchTotal > 0){
       const pct = Math.round(fetchDone / fetchTotal * 100);
       const name = currentFetchingName ? ` — ${currentFetchingName}` : '';
       setStatus('loading', `更新中 ${fetchDone}/${fetchTotal}（${pct}%）${name}`);
+      showProgressBar(fetchDone, fetchTotal, pct);
     } else {
       setStatus('loading', '更新中...');
+      showProgressBar(0, 0, null);
     }
   }
+}
+
+// 画面上部の更新中バー
+function showProgressBar(done, total, pct){
+  let bar = document.getElementById('progressBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'progressBar';
+    bar.innerHTML = '<div id="progressBarFill"></div><span id="progressBarText"></span>';
+    document.body.appendChild(bar);
+  }
+  bar.classList.add('show');
+  const fill = document.getElementById('progressBarFill');
+  const text = document.getElementById('progressBarText');
+  if(pct === null){
+    fill.style.width = '100%';
+    fill.classList.add('indeterminate');
+    text.textContent = '更新中...';
+  } else {
+    fill.classList.remove('indeterminate');
+    fill.style.width = pct + '%';
+    text.textContent = `更新中 ${done}/${total}（${pct}%）`;
+  }
+}
+
+function hideProgressBar(){
+  const bar = document.getElementById('progressBar');
+  if(!bar) return;
+  const fill = document.getElementById('progressBarFill');
+  const text = document.getElementById('progressBarText');
+  if(fill){ fill.classList.remove('indeterminate'); fill.style.width = '100%'; }
+  if(text){ text.textContent = '更新完了'; }
+  setTimeout(()=>{ bar.classList.remove('show'); }, 1000);
 }
 
 /* ── Storage ── */
