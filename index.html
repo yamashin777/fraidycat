@@ -1021,7 +1021,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.06</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.07</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -4222,9 +4222,15 @@ setInterval(()=>{
       const d = p.scheduledAt instanceof Date ? p.scheduledAt : new Date(p.scheduledAt);
       if(isNaN(d.getTime())) return;
       const diff = d - new Date();
-      if(diff <= 0){
-        needsRefetch = true;
-        enqueueFetch(f, false);
+      // 予定時刻を過ぎた直後（10分以内）だけ取得し直す。
+      // それ以上過ぎたものは通常の頻度に任せ、毎分の再取得を防ぐ（無限取得バグ対策）。
+      const SCHED_GRACE = 10 * 60 * 1000;
+      if(diff <= 0 && diff > -SCHED_GRACE){
+        // 直近に取得済みなら繰り返さない（最終取得から5分は待つ）
+        if(!f.lastFetched || Date.now() - f.lastFetched > 5 * 60 * 1000){
+          needsRefetch = true;
+          enqueueFetch(f, false);
+        }
       }
     });
   });
