@@ -1020,7 +1020,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.01</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.04</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1054,6 +1054,8 @@ const PROXIES = [
     return await r.text();
   },
 ];
+const PROXY_NAMES = ['allorigins', 'corsproxy', 'rss2json', 'feedproxy'];
+let lastUsedProxy = '';
 
 const COLORS = [
   {bg:'#E8F5E9',fg:'#1B5E20',dark_bg:'#1B5E20',dark_fg:'#A5D6A7'},
@@ -1331,7 +1333,8 @@ function updateFetchStatus(){
   } else {
     if(fetchTotal > 0){
       const pct = Math.round(fetchDone / fetchTotal * 100);
-      const name = currentFetchingName ? ` — ${currentFetchingName}` : '';
+      const via = lastUsedProxy ? ` via ${lastUsedProxy}` : '';
+      const name = currentFetchingName ? ` — ${currentFetchingName}${via}` : '';
       setStatus('loading', `更新中 ${fetchDone}/${fetchTotal}（${pct}%）${name}`);
       showProgressBar(fetchDone, fetchTotal, pct);
     } else {
@@ -1450,6 +1453,8 @@ async function fetchRSSRaw(url){
     const i = (start + k) % n;
     // クールダウン中のプロキシはスキップ
     if(Date.now() < proxyCooldownUntil[i]) continue;
+    lastUsedProxy = PROXY_NAMES[i] || '';
+    if(loadingCount > 0) updateFetchStatus();
     try{
       const result = await PROXIES[i](url);
       return result; // string or {rss2json:...}
@@ -1465,6 +1470,7 @@ async function fetchRSSRaw(url){
   // 全プロキシがクールダウン中などで全滅した場合も、最後にもう一周だけ強行
   if(!lastErr){
     for(let i=0; i<n; i++){
+      lastUsedProxy = PROXY_NAMES[i] || '';
       try{ return await PROXIES[i](url); }catch(e){ lastErr = e; }
     }
   }
@@ -1748,6 +1754,8 @@ async function doFetch(f){
   }catch(e){
     f.error = `取得エラー: ${e.message}`;
     f.posts = f.posts || [];
+    const shortName = f.name.length > 16 ? f.name.slice(0, 16) + '…' : f.name;
+    showToast(`⚠ ${shortName} の取得に失敗`);
   }finally{
     f.loading = false;
     activeFetches = Math.max(0, activeFetches - 1);
