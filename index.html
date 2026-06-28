@@ -908,6 +908,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
     <button class="hdr-btn data" onclick="openImportModal()" ontouchend="event.preventDefault();openImportModal()">↑ テキスト登録<span class="tooltip">テキスト形式でチャンネルをまとめて登録</span></button>
     <button class="hdr-btn data" onclick="exportJSON()" ontouchend="event.preventDefault();exportJSON()">↓ JSONエクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
     <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()" ontouchend="event.preventDefault();document.getElementById('importJsonFile').click()">↑ JSONインポート<span class="tooltip">JSONファイルからデータを読み込み</span></button>
+    <button class="hdr-btn data" onclick="openLogModal()">📋 ログ<span class="tooltip">取得ログ・成功率・プロキシ別統計を確認</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn api" onclick="openBulkFreqModal()" ontouchend="event.preventDefault();openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
@@ -1020,7 +1021,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.04</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.05</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1056,6 +1057,29 @@ const PROXIES = [
 ];
 const PROXY_NAMES = ['allorigins', 'corsproxy', 'rss2json', 'feedproxy'];
 let lastUsedProxy = '';
+
+// ── フェッチログ（PC向け・localStorage保存） ──
+const FETCH_LOG_MAX = 300;
+let fetchLog = [];
+try{
+  const saved = localStorage.getItem('fraidycat_fetch_log');
+  if(saved) fetchLog = JSON.parse(saved) || [];
+}catch(e){ fetchLog = []; }
+
+function addFetchLog(entry){
+  entry.at = Date.now();
+  fetchLog.unshift(entry); // 新しい順
+  if(fetchLog.length > FETCH_LOG_MAX) fetchLog = fetchLog.slice(0, FETCH_LOG_MAX);
+  try{ localStorage.setItem('fraidycat_fetch_log', JSON.stringify(fetchLog)); }catch(e){}
+  // ログ画面が開いていれば再描画
+  if(document.getElementById('logModalBody')) renderLogModal();
+}
+
+function clearFetchLog(){
+  fetchLog = [];
+  try{ localStorage.removeItem('fraidycat_fetch_log'); }catch(e){}
+  if(document.getElementById('logModalBody')) renderLogModal();
+}
 
 const COLORS = [
   {bg:'#E8F5E9',fg:'#1B5E20',dark_bg:'#1B5E20',dark_fg:'#A5D6A7'},
@@ -1744,6 +1768,7 @@ async function doFetch(f){
   currentFetchingName = f.name.length > 20 ? f.name.slice(0, 20) + '…' : f.name;
   updateFetchStatus();
 
+  const fetchStartAt = Date.now();
   try{
     const raw = await fetchRSSRaw(f.url);
     const {feedTitle, posts} = parseRSS(raw);
@@ -1751,11 +1776,13 @@ async function doFetch(f){
     f.lastFetched = Date.now();
     f.error = null;
     if(feedTitle && f.name === f.url) f.name = feedTitle;
+    addFetchLog({name:f.name, ok:true, proxy:lastUsedProxy, count:posts.length, ms:Date.now()-fetchStartAt});
   }catch(e){
     f.error = `取得エラー: ${e.message}`;
     f.posts = f.posts || [];
     const shortName = f.name.length > 16 ? f.name.slice(0, 16) + '…' : f.name;
     showToast(`⚠ ${shortName} の取得に失敗`);
+    addFetchLog({name:f.name, ok:false, proxy:lastUsedProxy, error:e.message, ms:Date.now()-fetchStartAt});
   }finally{
     f.loading = false;
     activeFetches = Math.max(0, activeFetches - 1);
@@ -1816,6 +1843,94 @@ function showToast(msg){
   el.classList.add('show');
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>el.classList.remove('show'), 1800);
+}
+
+// ── ログ画面 ──
+let logFilter = 'all'; // all / ok / fail
+function openLogModal(){
+  logFilter = 'all';
+  let m = document.getElementById('logModal');
+  if(!m){
+    m = document.createElement('div');
+    m.id = 'logModal';
+    m.className = 'modal-backdrop';
+    m.onclick = (e)=>{ if(e.target===m) closeLogModal(); };
+    m.innerHTML = `<div class="modal" style="max-width:720px;width:92%;max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h2 style="margin:0">取得ログ</h2>
+        <div id="logFilterBtns" style="display:flex;gap:4px;margin-left:8px"></div>
+        <button class="btn-cancel" style="margin-left:auto" onclick="clearFetchLog()">クリア</button>
+        <button class="btn-cancel" onclick="closeLogModal()">閉じる</button>
+      </div>
+      <div id="logStats" style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.7"></div>
+      <div id="logModalBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  renderLogModal();
+}
+function closeLogModal(){
+  const m = document.getElementById('logModal');
+  if(m) m.style.display = 'none';
+}
+function setLogFilter(f){ logFilter = f; renderLogModal(); }
+
+function renderLogModal(){
+  const body = document.getElementById('logModalBody');
+  if(!body) return;
+  // 集計
+  const total = fetchLog.length;
+  const okCount = fetchLog.filter(l=>l.ok).length;
+  const failCount = total - okCount;
+  const rate = total ? Math.round(okCount/total*100) : 0;
+  // プロキシ別集計
+  const byProxy = {};
+  fetchLog.forEach(l=>{
+    const p = l.proxy || '(不明)';
+    if(!byProxy[p]) byProxy[p] = {ok:0, fail:0};
+    if(l.ok) byProxy[p].ok++; else byProxy[p].fail++;
+  });
+  const proxyStat = Object.entries(byProxy).map(([p,s])=>{
+    const t = s.ok+s.fail; const r = t?Math.round(s.ok/t*100):0;
+    return `${p}: ${s.ok}/${t}（${r}%）`;
+  }).join(' ／ ');
+  const stats = document.getElementById('logStats');
+  if(stats){
+    stats.innerHTML = `合計 ${total}件 ｜ 成功 ${okCount} ／ 失敗 ${failCount} ｜ 成功率 ${rate}%`
+      + (proxyStat ? `<br>プロキシ別: ${proxyStat}` : '');
+  }
+  // フィルターボタン
+  const fb = document.getElementById('logFilterBtns');
+  if(fb){
+    const mk = (key,label)=>`<button onclick="setLogFilter('${key}')" style="font-size:11px;padding:3px 10px;border-radius:99px;border:1px solid var(--border-strong);cursor:pointer;background:${logFilter===key?'var(--accent-mid)':'var(--surface)'};color:${logFilter===key?'#fff':'var(--text)'}">${label}</button>`;
+    fb.innerHTML = mk('all','すべて')+mk('ok','成功')+mk('fail','失敗');
+  }
+  // 一覧
+  let list = fetchLog;
+  if(logFilter==='ok') list = fetchLog.filter(l=>l.ok);
+  else if(logFilter==='fail') list = fetchLog.filter(l=>!l.ok);
+  if(!list.length){
+    body.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-faint);font-size:13px">ログがありません</div>`;
+    return;
+  }
+  body.innerHTML = list.map(l=>{
+    const t = new Date(l.at);
+    const time = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`;
+    const date = `${t.getMonth()+1}/${t.getDate()}`;
+    const icon = l.ok ? '✓' : '✕';
+    const color = l.ok ? '#0A8' : '#D33';
+    const detail = l.ok ? `${l.count}件取得` : `${esc(l.error||'失敗')}`;
+    const via = l.proxy ? `<span style="color:var(--text-faint)">via ${esc(l.proxy)}</span>` : '';
+    const ms = l.ms != null ? `<span style="color:var(--text-faint)">${l.ms}ms</span>` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:${color};font-weight:bold;width:14px;flex-shrink:0">${icon}</span>
+      <span style="color:var(--text-faint);font-family:'DM Mono',monospace;flex-shrink:0">${date} ${time}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name||'')}</span>
+      ${via} ${ms}
+      <span style="color:${l.ok?'var(--text-muted)':color};flex-shrink:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${detail}</span>
+    </div>`;
+  }).join('');
 }
 
 /* ── Render ── */
