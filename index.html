@@ -1021,7 +1021,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.08</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.10</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1934,10 +1934,28 @@ function renderLogModal(){
     const t = s.ok+s.fail; const r = t?Math.round(s.ok/t*100):0;
     return `${p}: ${s.ok}/${t}（${r}%）`;
   }).join(' ／ ');
+  let freq5Warn = '';
+  try{
+    const five = follows.filter(f=>f.freq==='5分' && !f.suspended && f.lastFetched);
+    if(five.length){
+      const times = five.map(f=>f.lastFetched);
+      const span = Math.max(...times) - Math.min(...times);
+      const spanMin = Math.floor(span/60000), spanSec = Math.round((span%60000)/1000);
+      const spanStr = spanMin>0 ? `${spanMin}分${spanSec}秒` : `${spanSec}秒`;
+      const over = span > 5*60*1000;
+      const notYet = follows.filter(f=>f.freq==='5分' && !f.suspended && !f.lastFetched).length;
+      const color = over ? '#D33' : '#0A8';
+      const mark = over ? '⚠' : '✓';
+      freq5Warn = `<br><span style="color:${color};font-weight:500">${mark} 5分毎チャンネル: ${five.length}件 / 一周 約${spanStr}${over?'（5分超過：限界が近い、または超えています）':'（5分以内：余裕あり）'}</span>`
+        + (notYet ? `<span style="color:var(--text-faint)">（未取得 ${notYet}件）</span>` : '');
+    }
+  }catch(e){}
+
   const stats = document.getElementById('logStats');
   if(stats){
     stats.innerHTML = `合計 ${total}件 ｜ 成功 ${okCount} ／ 失敗 ${failCount} ｜ 成功率 ${rate}%`
-      + (proxyStat ? `<br>プロキシ別: ${proxyStat}` : '');
+      + (proxyStat ? `<br>プロキシ別: ${proxyStat}` : '')
+      + freq5Warn;
   }
   // フィルターボタン
   const fb = document.getElementById('logFilterBtns');
@@ -3412,10 +3430,32 @@ function renderModal(){
   </div>`;
 }
 
-function addFollow(){
-  const url = document.getElementById('f-url').value.trim();
+async function addFollow(){
+  let url = document.getElementById('f-url').value.trim();
   const name = document.getElementById('f-name').value.trim() || url;
   if(!url){ alert('URLは必須です'); return; }
+
+  // YouTubeのチャンネルURL等をRSS形式に自動変換（HTML解析まで粘る）
+  if(/youtube\.com|youtu\.be/.test(url) && !/feeds\/videos\.xml/.test(url)){
+    const btn = document.querySelector('.btn-ok');
+    const orig = btn ? btn.textContent : '';
+    if(btn){ btn.textContent = 'RSS検索中…'; btn.disabled = true; }
+    try{
+      const resolved = await resolveYouTubeFeed(url);
+      if(/feeds\/videos\.xml/.test(resolved)){
+        url = resolved;
+      } else {
+        if(btn){ btn.textContent = orig; btn.disabled = false; }
+        alert('このURLからRSSフィードを見つけられませんでした。\nチャンネルページの「/channel/UC...」形式のURL、またはRSS URLを直接入力してください。');
+        return;
+      }
+    }catch(e){
+      if(btn){ btn.textContent = orig; btn.disabled = false; }
+      alert('RSS検索に失敗しました: ' + e.message);
+      return;
+    }
+    if(btn){ btn.textContent = orig; btn.disabled = false; }
+  }
 
   // 重複チェック
   const duplicate = follows.find(f => f.url === url);
@@ -3648,6 +3688,49 @@ function execImport(){
 function ytChannelIdFromUrl(url){
   const m = url.match(/channel_id=([A-Za-z0-9_-]+)/);
   return m ? m[1] : null;
+}
+
+// YouTubeのチャンネルURL等をRSSフィードURLに変換（最終的にHTML解析まで粘る）
+async function resolveYouTubeFeed(input){
+  let url = input.trim();
+  // 既にRSS形式ならそのまま
+  if(/feeds\/videos\.xml\?channel_id=/.test(url)) return url;
+  // channel/UC... 形式 → 即変換
+  let m = url.match(/youtube\.com\/channel\/(UC[A-Za-z0-9_-]+)/);
+  if(m) return `https://www.youtube.com/feeds/videos.xml?channel_id=${m[1]}`;
+  // playlist は playlist_id フィードに
+  m = url.match(/[?&]list=([A-Za-z0-9_-]+)/);
+  if(m) return `https://www.youtube.com/feeds/videos.xml?playlist_id=${m[1]}`;
+  // YouTube以外はそのまま（一般RSS）
+  if(!/youtube\.com|youtu\.be/.test(url)) return url;
+
+  // @ハンドル・/c/・/user/ 形式 → APIで検索してID取得（APIキーがあれば）
+  const handleMatch = url.match(/youtube\.com\/@([A-Za-z0-9_.\-]+)/);
+  if(handleMatch && ytApiKey){
+    try{
+      const q = handleMatch[1];
+      const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent('@'+q)}&maxResults=1&key=${ytApiKey}`);
+      if(r.ok){
+        const d = await r.json();
+        const cid = d.items?.[0]?.snippet?.channelId || d.items?.[0]?.id?.channelId;
+        if(cid) return `https://www.youtube.com/feeds/videos.xml?channel_id=${cid}`;
+      }
+    }catch(e){ /* 次の手段へ */ }
+  }
+
+  // 最終手段: チャンネルページのHTMLをプロキシ経由で取得し、channelIdを抜き出す
+  try{
+    const raw = await fetchRSSRaw(url); // 既存のプロキシ取得を流用
+    const html = typeof raw === 'string' ? raw : (raw?.contents || '');
+    // HTML内の "channelId":"UC..." / "externalId":"UC..." / channel/UC... を順に探す
+    let cm = html.match(/"(?:channelId|externalId)":"(UC[A-Za-z0-9_-]+)"/);
+    if(!cm) cm = html.match(/channel\/(UC[A-Za-z0-9_-]+)/);
+    if(!cm) cm = html.match(/(UC[A-Za-z0-9_-]{20,})/);
+    if(cm) return `https://www.youtube.com/feeds/videos.xml?channel_id=${cm[1]}`;
+  }catch(e){ /* 諦める */ }
+
+  // 変換できなければ元のURLを返す（呼び出し側で判断）
+  return url;
 }
 
 async function fetchIconForFollow(f){
