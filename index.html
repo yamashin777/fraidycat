@@ -929,7 +929,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
     <button class="hdr-btn data" onclick="exportJSON()" ontouchend="event.preventDefault();exportJSON()">↓ JSONエクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
     <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()" ontouchend="event.preventDefault();document.getElementById('importJsonFile').click()">↑ JSONインポート<span class="tooltip">JSONファイルからデータを読み込み</span></button>
     <button class="hdr-btn data" onclick="openLogModal()">📋 ログ<span class="tooltip">取得ログ・成功率・プロキシ別統計を確認</span></button>
-    <button class="hdr-btn data" onclick="openRevivalHistory()">🎉 復活<span class="tooltip">久しぶりに更新されたチャンネルの履歴</span></button>
+    <button class="hdr-btn data" onclick="openRevivalHistory()">🎉 久しぶり<span class="tooltip">久しぶりに更新されたチャンネルの履歴</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn api" onclick="openBulkFreqModal()" ontouchend="event.preventDefault();openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
@@ -1042,7 +1042,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.16</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0712.05</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2153,7 +2153,7 @@ function renderLogModal(){
       <span style="flex:1;min-width:0">チャンネル</span>
       <span style="flex-shrink:0">プロキシ</span>
       <span style="flex-shrink:0">時間</span>
-      <span style="flex-shrink:0;max-width:40%">動画数／結果</span>
+      <span style="flex-shrink:0;max-width:40%">動画数</span>
     </div>`;
   body.innerHTML = logHeader + list.map(l=>{
     const t = new Date(l.at);
@@ -2161,7 +2161,7 @@ function renderLogModal(){
     const date = `${t.getMonth()+1}/${t.getDate()}`;
     const icon = l.ok ? '✓' : '✕';
     const color = l.ok ? '#0A8' : '#D33';
-    const detail = l.ok ? `動画${l.count}` : `${esc(l.error||'失敗')}`;
+    const detail = l.ok ? `${l.count}件` : `${esc(l.error||"失敗")}`;
     const via = l.proxy ? `<span style="color:var(--text-faint)">via ${esc(l.proxy)}</span>` : '';
     const ms = l.ms != null ? `<span style="color:var(--text-faint)">${l.ms}ms</span>` : '';
     let attemptsRow = '';
