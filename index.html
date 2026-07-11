@@ -352,6 +352,25 @@ body{display:flex;flex-direction:column;min-height:100vh}
   font-size:12px;font-weight:500;color:var(--text);
   font-family:'DM Sans',sans-serif;
 }
+#revivalPanel{
+  position:fixed;top:0;left:0;right:0;z-index:9998;
+  background:linear-gradient(#FFF9E8,#FFF4D6);
+  border-bottom:2px solid #E8C860;
+  box-shadow:0 3px 12px rgba(0,0,0,0.12);
+  max-height:40vh;overflow-y:auto;
+  padding:8px 12px;
+}
+.rv-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.rv-title-main{font-size:13px;font-weight:600;color:#8A6D1A}
+.rv-clear{margin-left:auto;font-size:11px;padding:3px 12px;border-radius:99px;border:1px solid #D8B84A;background:#fff;color:#8A6D1A;cursor:pointer}
+.rv-list{display:flex;flex-direction:column;gap:4px}
+.rv-item{display:flex;align-items:center;gap:8px;padding:4px 6px;background:rgba(255,255,255,0.6);border-radius:6px}
+.rv-badge{flex-shrink:0;font-size:11px;font-weight:600;color:#fff;background:#E0A020;padding:2px 8px;border-radius:99px;font-family:'DM Mono',monospace}
+.rv-link{flex:1;min-width:0;display:flex;flex-direction:column;text-decoration:none;overflow:hidden}
+.rv-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rv-title{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rv-x{flex-shrink:0;width:22px;height:22px;border:none;background:transparent;color:var(--text-faint);cursor:pointer;font-size:13px;border-radius:4px}
+.rv-x:hover{background:rgba(0,0,0,0.08)}
 #toast{
   position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(20px);
   background:var(--accent-mid);color:#fff;
@@ -1021,7 +1040,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.11</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.12</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1818,16 +1837,31 @@ async function doFetch(f){
   try{
     const raw = await fetchRSSRaw(f.url);
     const {feedTitle, posts} = parseRSS(raw);
+    // 久しぶり更新の検出: 取得前の最新動画リンクを控える
+    const prevLatestLink = (f.posts && f.posts[0]) ? f.posts[0].link : null;
     f.posts = posts;
     f.lastFetched = Date.now();
     f.error = null;
     if(feedTitle && f.name === f.url) f.name = feedTitle;
+    // 新着があり、かつ最新動画とその前の動画の間隔が14日以上なら「久しぶり更新」
+    try{
+      if(posts.length && posts[0].link !== prevLatestLink && prevLatestLink !== null){
+        const d0 = posts[0].date ? new Date(posts[0].date) : null;
+        const d1 = posts[1] && posts[1].date ? new Date(posts[1].date) : null;
+        if(d0 && d1 && !isNaN(d0) && !isNaN(d1)){
+          const gapDays = (d0 - d1) / (24*60*60*1000);
+          if(gapDays >= 14){
+            markRevival(f, Math.round(gapDays), posts[0]);
+          }
+        }
+      }
+    }catch(e){}
     addFetchLog({name:f.name, ok:true, proxy:lastUsedProxy, count:posts.length, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice()});
   }catch(e){
     f.error = `取得エラー: ${e.message}`;
     f.posts = f.posts || [];
     const shortName = f.name.length > 16 ? f.name.slice(0, 16) + '…' : f.name;
-    showToast(`⚠ ${shortName} の取得に失敗`);
+    showToast(`⚠ ${shortName} の取得に失敗`, 4000);
     addFetchLog({name:f.name, ok:false, proxy:lastUsedProxy, error:e.message, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice()});
   }finally{
     f.loading = false;
@@ -1878,7 +1912,7 @@ async function refreshAll(){
 }
 
 let toastTimer = null;
-function showToast(msg){
+function showToast(msg, duration){
   let el = document.getElementById('toast');
   if(!el){
     el = document.createElement('div');
@@ -1888,7 +1922,57 @@ function showToast(msg){
   el.textContent = msg;
   el.classList.add('show');
   if(toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>el.classList.remove('show'), 1800);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), duration || 1800);
+}
+
+// ── 久しぶり更新（長期休眠からの復活）──
+let revivals = []; // {id, name, gapDays, title, link, at}
+function markRevival(f, gapDays, post){
+  // 同じチャンネルが既にあれば更新
+  revivals = revivals.filter(r=>r.id !== f.id);
+  revivals.unshift({id:f.id, name:f.name, gapDays, title:post.title, link:post.link, at:Date.now()});
+  if(revivals.length > 30) revivals = revivals.slice(0,30);
+  renderRevivalPanel();
+}
+
+function dismissRevival(id){
+  revivals = revivals.filter(r=>r.id !== id);
+  renderRevivalPanel();
+}
+function dismissAllRevivals(){
+  revivals = [];
+  renderRevivalPanel();
+}
+
+function renderRevivalPanel(){
+  let panel = document.getElementById('revivalPanel');
+  if(!revivals.length){
+    if(panel) panel.style.display = 'none';
+    return;
+  }
+  if(!panel){
+    panel = document.createElement('div');
+    panel.id = 'revivalPanel';
+    document.body.appendChild(panel);
+  }
+  panel.style.display = 'block';
+  const items = revivals.map(r=>{
+    const safeName = esc(r.name);
+    const safeTitle = esc(r.title||'');
+    return `<div class="rv-item">
+      <span class="rv-badge">${r.gapDays}日ぶり</span>
+      <a class="rv-link" href="${esc(r.link)}" target="_blank" rel="noopener" title="${safeTitle}">
+        <span class="rv-name">${safeName}</span>
+        <span class="rv-title">${safeTitle}</span>
+      </a>
+      <button class="rv-x" onclick="dismissRevival(${r.id})" title="消す">✕</button>
+    </div>`;
+  }).join('');
+  panel.innerHTML = `<div class="rv-head">
+      <span class="rv-title-main">🎉 久しぶりに更新されたチャンネル（${revivals.length}）</span>
+      <button class="rv-clear" onclick="dismissAllRevivals()">すべて消す</button>
+    </div>
+    <div class="rv-list">${items}</div>`;
 }
 
 // ── ログ画面 ──
