@@ -928,6 +928,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
     <button class="hdr-btn data" onclick="exportJSON()" ontouchend="event.preventDefault();exportJSON()">↓ JSONエクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
     <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()" ontouchend="event.preventDefault();document.getElementById('importJsonFile').click()">↑ JSONインポート<span class="tooltip">JSONファイルからデータを読み込み</span></button>
     <button class="hdr-btn data" onclick="openLogModal()">📋 ログ<span class="tooltip">取得ログ・成功率・プロキシ別統計を確認</span></button>
+    <button class="hdr-btn data" onclick="openRevivalHistory()">🎉 復活<span class="tooltip">久しぶりに更新されたチャンネルの履歴</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn api" onclick="openBulkFreqModal()" ontouchend="event.preventDefault();openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
@@ -1040,7 +1041,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.14</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0511.15</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1953,13 +1954,20 @@ function showToast(msg, duration){
 }
 
 // ── 久しぶり更新（長期休眠からの復活）──
-let revivals = []; // {id, name, gapDays, title, link, at}
+let revivals = [];
+let revivalHistory = [];
+try{ const s=localStorage.getItem('fraidycat_revival_history'); if(s) revivalHistory=JSON.parse(s)||[]; }catch(e){ revivalHistory=[]; }
+const REVIVAL_HISTORY_MAX = 200;
 function markRevival(f, gapDays, post){
-  // 同じチャンネルが既にあれば更新
   revivals = revivals.filter(r=>r.id !== f.id);
   revivals.unshift({id:f.id, name:f.name, gapDays, title:post.title, link:post.link, at:Date.now()});
   if(revivals.length > 30) revivals = revivals.slice(0,30);
   renderRevivalPanel();
+  if(!revivalHistory.some(r=>r.link === post.link)){
+    revivalHistory.unshift({id:f.id, name:f.name, gapDays, title:post.title, link:post.link, at:Date.now()});
+    if(revivalHistory.length > REVIVAL_HISTORY_MAX) revivalHistory = revivalHistory.slice(0, REVIVAL_HISTORY_MAX);
+    try{ localStorage.setItem('fraidycat_revival_history', JSON.stringify(revivalHistory)); }catch(e){}
+  }
 }
 
 function dismissRevival(id){
@@ -1969,6 +1977,53 @@ function dismissRevival(id){
 function dismissAllRevivals(){
   revivals = [];
   renderRevivalPanel();
+}
+
+// 久しぶり更新の履歴モーダル
+function openRevivalHistory(){
+  let m = document.getElementById('revivalHistModal');
+  if(!m){
+    m = document.createElement('div');
+    m.id = 'revivalHistModal';
+    m.className = 'modal-backdrop';
+    m.onclick = (e)=>{ if(e.target===m) m.style.display='none'; };
+    m.innerHTML = `<div class="modal" style="max-width:640px;width:92%;max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h2 style="margin:0">🎉 久しぶり更新の履歴</h2>
+        <button class="btn-cancel" style="margin-left:auto" onclick="clearRevivalHistory()">クリア</button>
+        <button class="btn-cancel" onclick="document.getElementById('revivalHistModal').style.display='none'">閉じる</button>
+      </div>
+      <div id="revivalHistBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  renderRevivalHistory();
+}
+function clearRevivalHistory(){
+  revivalHistory = [];
+  try{ localStorage.removeItem('fraidycat_revival_history'); }catch(e){}
+  renderRevivalHistory();
+}
+function renderRevivalHistory(){
+  const body = document.getElementById('revivalHistBody');
+  if(!body) return;
+  if(!revivalHistory.length){
+    body.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-faint);font-size:13px">履歴がありません</div>`;
+    return;
+  }
+  body.innerHTML = revivalHistory.map(r=>{
+    const t = new Date(r.at);
+    const date = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border);font-size:12px">
+      <span class="rv-badge" style="flex-shrink:0">${r.gapDays}日ぶり</span>
+      <a href="${esc(r.link)}" target="_blank" rel="noopener" style="flex:1;min-width:0;text-decoration:none;display:flex;flex-direction:column;overflow:hidden">
+        <span style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
+        <span style="color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title||'')}</span>
+      </a>
+      <span style="color:var(--text-faint);flex-shrink:0;font-family:'DM Mono',monospace">${date}</span>
+    </div>`;
+  }).join('');
 }
 
 function renderRevivalPanel(){
@@ -1997,6 +2052,7 @@ function renderRevivalPanel(){
   }).join('');
   panel.innerHTML = `<div class="rv-head">
       <span class="rv-title-main">🎉 久しぶりに更新されたチャンネル（${revivals.length}）</span>
+      <button class="rv-clear" onclick="openRevivalHistory()">履歴</button>
       <button class="rv-clear" onclick="dismissAllRevivals()">すべて消す</button>
     </div>
     <div class="rv-list">${items}</div>`;
