@@ -1042,7 +1042,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0713.22</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0713.24</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1659,6 +1659,10 @@ function parseRSS(raw){
       const updatedEl   = getEl(e,'updated');
       const dateStr = (publishedEl || updatedEl)?.textContent?.trim() || '';
       const date = parseDate(dateStr);
+      // <updated>（フィード側の最終更新日時）も別途保持しておく。
+      // 配信予定が長期間放置されているかどうかの判定に使う。
+      const rssUpdatedStr = updatedEl?.textContent?.trim() || '';
+      const rssUpdated = rssUpdatedStr ? parseDate(rssUpdatedStr) : null;
 
       // YouTube duration: <yt:duration seconds="N"> -> seconds属性
       // またはテキストコンテンツ
@@ -1680,7 +1684,7 @@ function parseRSS(raw){
         }
       }
 
-      posts.push({title, link, date, duration});
+      posts.push({title, link, date, duration, rssUpdated});
     });
   } else {
     feedTitle = doc.querySelector('channel > title')?.textContent?.trim()
@@ -2593,10 +2597,20 @@ function getLiveBadge(p){
   if(p.duration === -2) return {text:'🔴 Live', attr:' data-live="true"'};
   if(p.duration === -3){
     let text = '予定';
+    const now = new Date();
+
+    // RSSの<updated>（フィード側の最終更新日時）が長時間動いていない場合、
+    // その配信予定はYouTube側でも放置されている可能性が高いとみなす。
+    const RSS_STALE = 24 * 60 * 60 * 1000; // 24時間
+    let rssStale = false;
+    if(p.rssUpdated){
+      const ru = p.rssUpdated instanceof Date ? p.rssUpdated : new Date(p.rssUpdated);
+      if(!isNaN(ru.getTime())) rssStale = (now - ru) > RSS_STALE;
+    }
+
     if(p.scheduledAt){
       const d = p.scheduledAt instanceof Date ? p.scheduledAt : new Date(p.scheduledAt);
       if(!isNaN(d.getTime())){
-        const now = new Date();
         const diff = d - now;
         if(diff > 0){
           // 未来の予定
@@ -2612,15 +2626,20 @@ function getLiveBadge(p){
         } else {
           // 予定時刻を過ぎている。開始が遅れているだけの可能性があるため、
           // 一定時間（PAST_DUE_HIDE）以内は日時付きで「予定」表示を継続する。
-          // それを超えても更新されない場合は取得漏れとみなしバッジ自体を出さない。
+          // ただしRSSが24時間以上動いていない（=放置されている可能性が高い）場合は、
+          // その猶予を待たずに即バッジを出さない。
           const PAST_DUE_HIDE = 6 * 60 * 60 * 1000; // 6時間
-          if(diff > -PAST_DUE_HIDE){
+          if(diff > -PAST_DUE_HIDE && !rssStale){
             text = `予定 ${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
           } else {
             return {text:'', attr:''};
           }
         }
       }
+    } else if(rssStale){
+      // 予定時刻の情報自体がない場合でも、RSSが長時間更新されていなければ
+      // 放置された予定とみなしバッジを出さない。
+      return {text:'', attr:''};
     }
     return {text, attr:' data-upcoming="true"'};
   }
@@ -4494,28 +4513,75 @@ function suspendAllErrors(){
   render();
 }
 
-// 配信予定のカウントダウン＋時刻表示の自動更新（1分ごと）
-setInterval(()=>{
-  let needsRefetch = false;
+// 配信予定（duration===-3）の項目だけをYouTube APIで軽量に再チェックする。
+// チャンネル全体のRSS再取得（enqueueFetch）は行わず、対象動画IDだけをvideos.listに問い合わせる。
+async function refetchScheduledStatuses(){
+  if(!ytApiKey) return;
+  const now = Date.now();
+  const CHECK_INTERVAL = 5 * 60 * 1000; // 同一動画の再チェックは5分に1回まで
+  const targets = [];
   follows.forEach(f=>{
-    if(!f.posts) return;
-    f.posts.forEach(p=>{
-      if(p.duration !== -3 || !p.scheduledAt) return;
-      const d = p.scheduledAt instanceof Date ? p.scheduledAt : new Date(p.scheduledAt);
-      if(isNaN(d.getTime())) return;
-      const diff = d - new Date();
-      // 予定時刻を過ぎた直後（10分以内）だけ取得し直す。
-      // それ以上過ぎたものは通常の頻度に任せ、毎分の再取得を防ぐ（無限取得バグ対策）。
-      const SCHED_GRACE = 10 * 60 * 1000;
-      if(diff <= 0 && diff > -SCHED_GRACE){
-        // 直近に取得済みなら繰り返さない（最終取得から5分は待つ）
-        if(!f.lastFetched || Date.now() - f.lastFetched > 5 * 60 * 1000){
-          needsRefetch = true;
-          enqueueFetch(f, false);
-        }
+    (f.posts||[]).forEach(p=>{
+      if(p.duration !== -3 || !p.link) return;
+      if(p.lastLiveCheck && now - p.lastLiveCheck < CHECK_INTERVAL) return;
+      // まだ予定時刻前のものはチェック不要
+      if(p.scheduledAt){
+        const d = p.scheduledAt instanceof Date ? p.scheduledAt : new Date(p.scheduledAt);
+        if(!isNaN(d.getTime()) && d - now > 0) return;
       }
+      const vid = ytVideoId(p.link);
+      if(!vid) return;
+      targets.push({f, p, vid});
     });
   });
+  if(!targets.length) return;
+  // YouTube APIは1リクエストあたり最大50件のIDを指定可能
+  for(let i=0; i<targets.length; i+=50){
+    const batch = targets.slice(i, i+50);
+    const ids = batch.map(x=>x.vid).join(',');
+    try{
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet,liveStreamingDetails&id=${ids}&key=${ytApiKey}&maxResults=50`,
+        {signal: AbortSignal.timeout(15000)}
+      );
+      if(!res.ok) continue;
+      const json = await res.json();
+      const itemMap = {};
+      (json.items||[]).forEach(item=>{ itemMap[item.id]=item; });
+      batch.forEach(x=>{
+        x.p.lastLiveCheck = now;
+        const item = itemMap[x.vid];
+        if(!item) return; // 動画が見つからない（削除等）場合は変更しない
+        const liveStatus = item.snippet?.liveBroadcastContent;
+        const dur = item.contentDetails?.duration;
+        if(liveStatus === 'live'){
+          x.p.duration = -2; // ライブ配信中に切り替わった
+          return;
+        }
+        if(liveStatus === 'upcoming'){
+          // まだ予定のまま。予定時刻が更新されていれば反映
+          const scheduledTime = item.liveStreamingDetails?.scheduledStartTime;
+          if(scheduledTime) x.p.scheduledAt = new Date(scheduledTime);
+          return;
+        }
+        // 配信終了 or 通常動画になった → 実際の長さに更新
+        if(!dur || dur==='PT0S'){ x.p.duration = -1; return; }
+        let sec = 0;
+        const h = dur.match(/(\d+)H/); if(h) sec += parseInt(h[1])*3600;
+        const m = dur.match(/(\d+)M/); if(m) sec += parseInt(m[1])*60;
+        const s = dur.match(/(\d+)S/); if(s) sec += parseInt(s[1]);
+        x.p.duration = sec > 0 ? sec : -1;
+      });
+    }catch(e){ /* 通信エラー時は次の周期で再試行 */ }
+  }
+  save();
+  debouncedRender();
+}
+
+// 配信予定のカウントダウン＋時刻表示の自動更新（1分ごと）
+setInterval(()=>{
+  // 配信予定（-3）の項目はチャンネル全体のRSS再取得ではなく、動画単位の軽量チェックで更新する
+  refetchScheduledStatuses();
 
   // カウントダウン表示を更新（予定バッジのみ）
   document.querySelectorAll('.dp-dur[data-upcoming="true"], .tl-dur[data-upcoming="true"]').forEach(el=>{
