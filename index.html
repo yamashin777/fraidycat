@@ -1042,7 +1042,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0713.24</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0716.21</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2217,8 +2217,17 @@ function renderFollowCard(f){
       </div>
       <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}),false)">↻ 今すぐ更新</button>
       ${f.suspended ? `<button class="fc-refresh-btn" style="color:var(--accent-mid);border-color:var(--accent-mid)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=false;save();render()">▶ 更新を再開</button>` : `<button class="fc-refresh-btn" style="color:var(--text-faint)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=true;save();render()">⏸ 更新外にする</button>`}
-      <span class="fc-url-inline" title="${esc(f.url)}">${esc(f.url)}</span>
-      <button class="fc-copy-btn" onclick="copyText('${esc(f.url)}', this)" title="URLをコピー">📋</button>
+      <span class="fc-url-inline" id="url-text-${f.id}" title="${esc(f.url)}">${esc(f.url)}</span>
+      <input class="fc-tag-input fc-url-inline" id="url-input-${f.id}"
+        value="${esc(f.url)}"
+        title="RSSフィードのURLを編集できます"
+        onblur="this.style.display='none';document.getElementById('url-text-${f.id}').style.display='';changeUrl(${f.id}, this.value);"
+        onkeydown="event.stopPropagation();"
+        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
+        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
+        onclick="event.stopPropagation()"
+        style="display:none;flex:1;min-width:200px">
+      <button class="fc-copy-btn" onclick="event.stopPropagation();document.getElementById('url-text-${f.id}').style.display='none';const i=document.getElementById('url-input-${f.id}');i.style.display='';i.focus();i.select();" title="URLを編集" style="color:var(--accent-mid)">✏️</button>
     </div>
     <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">チャンネル名：</span>
@@ -2463,6 +2472,19 @@ function changeName(id, val){
   if(nameEl) nameEl.textContent = name;
   const avatarEl = document.querySelector(`#fc-${id} .fc-avatar`);
   if(avatarEl) avatarEl.textContent = f.initials;
+}
+
+function changeUrl(id, val){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  const url = val.trim();
+  if(!url || url === f.url) return;
+  f.url = url;
+  f.error = null;
+  save();
+  render();
+  // URL変更時は新しいフィードを即取得
+  enqueueFetch(f, false);
 }
 
 function changeMemo(id, val){
