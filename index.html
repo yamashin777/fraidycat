@@ -1042,7 +1042,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0716.22</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0717.10</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -3672,6 +3672,14 @@ async function addFollow(){
   const name = document.getElementById('f-name').value.trim() || url;
   if(!url){ alert('URLは必須です'); return; }
 
+  // 引用符・空白・山括弧など、URLに混入しやすい不正な文字が含まれていないか確認
+  // （コピー元のHTML属性などから引用符ごとコピーしてしまうミスを早期に検出する）
+  const badCharMatch = url.match(/["'<>\s]/);
+  if(badCharMatch){
+    alert(`URLに使用できない文字（${JSON.stringify(badCharMatch[0])}）が含まれています。\nコピー元から余分な文字が混ざっていないか確認してください。\n\n${url}`);
+    return;
+  }
+
   // YouTubeのチャンネルURL等をRSS形式に自動変換（HTML解析まで粘る）
   if(/youtube\.com|youtu\.be/.test(url) && !/feeds\/videos\.xml/.test(url)){
     const btn = document.querySelector('.btn-ok');
@@ -3689,6 +3697,28 @@ async function addFollow(){
     }catch(e){
       if(btn){ btn.textContent = orig; btn.disabled = false; }
       alert('RSS検索に失敗しました: ' + e.message);
+      return;
+    }
+    if(btn){ btn.textContent = orig; btn.disabled = false; }
+  }
+
+  // 登録前に実際にRSSとして取得・解析できるかを確認する。
+  // ここで失敗する場合はURLが誤っている可能性が高いため、登録せずエラーを表示して修正を促す。
+  {
+    const btn = document.querySelector('.btn-ok');
+    const orig = btn ? btn.textContent : '';
+    if(btn){ btn.textContent = '確認中…'; btn.disabled = true; }
+    try{
+      const raw = await fetchRSSRaw(url);
+      const {posts} = parseRSS(raw);
+      if(!posts.length){
+        if(btn){ btn.textContent = orig; btn.disabled = false; }
+        alert('このURLからは記事を1件も取得できませんでした。\nURLが正しいかご確認のうえ、修正して登録してください。\n\n' + url);
+        return;
+      }
+    }catch(e){
+      if(btn){ btn.textContent = orig; btn.disabled = false; }
+      alert('このURLの取得に失敗しました: ' + e.message + '\nURLが正しいかご確認のうえ、修正して登録してください。\n\n' + url);
       return;
     }
     if(btn){ btn.textContent = orig; btn.disabled = false; }
@@ -3754,9 +3784,21 @@ function toggleExpand(id){
   // 閉じる場合は展開前のカード位置を記憶
   const prevCard = expanded === id ? document.getElementById(`fc-${id}`) : null;
   const prevCardTop = prevCard ? prevCard.getBoundingClientRect().top : 0;
+  const isClosing = expanded === id;
 
   skipScrollRestore = true;
   expanded = expanded === id ? null : id;
+
+  // 検索で見つけたチャンネルを開いて編集し、そのカードを閉じたタイミングで
+  // 検索条件が残っていれば自動的にクリアする（×ボタンを押したのと同じ状態にする）
+  if(isClosing && searchQuery){
+    searchQuery = '';
+    const input = document.getElementById('searchInput');
+    if(input) input.value = '';
+    const clr = document.getElementById('searchClear');
+    if(clr) clr.style.display = 'none';
+  }
+
   render();
 
   if(!main) return;
