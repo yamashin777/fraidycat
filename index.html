@@ -936,6 +936,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn api" onclick="openBulkFreqModal()" ontouchend="event.preventDefault();openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
     <button class="hdr-btn api" onclick="openApiKeyModal()" ontouchend="event.preventDefault();openApiKeyModal()">🔑 APIキー<span class="tooltip">YouTube Data API v3のキーを設定</span></button>
+    <button class="hdr-btn api" onclick="openSummaryApiKeyModal()" ontouchend="event.preventDefault();openSummaryApiKeyModal()">🧠 要約APIキー<span class="tooltip">動画要約に使うGoogle Gemini APIキーを設定（無料枠あり）</span></button>
     <button class="hdr-btn api" onclick="openGhSettingsModal()" ontouchend="event.preventDefault();openGhSettingsModal()">🔄 GitHub同期<span class="tooltip">複数端末でデータを自動同期</span></button>
     <button class="hdr-btn api" onclick="bulkFetchDurations()" ontouchend="event.preventDefault();bulkFetchDurations()">▶ 時間一括取得<span class="tooltip">全YouTube動画の再生時間をAPIで一括取得</span></button>
     <button class="hdr-btn primary" onclick="openModal()" ontouchend="event.preventDefault();openModal()">+ 追加<span class="tooltip">新しいフォローを追加</span></button>
@@ -1044,7 +1045,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.22</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.26</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1174,6 +1175,7 @@ let sortMode = 'freq';
 let searchQuery = '';
 let tagOrder = JSON.parse(localStorage.getItem('fraidycat_tag_order') || '[]');
 let ytApiKey = localStorage.getItem('fraidycat_yt_api_key') || '';
+let geminiApiKey = localStorage.getItem('fraidycat_gemini_api_key') || '';
 
 /* ── GitHub同期設定 ── */
 let ghToken = localStorage.getItem('fraidycat_gh_token') || '';
@@ -1779,7 +1781,10 @@ function parseRSS(raw){
         }
       }
 
-      posts.push({title, link, date, duration, rssUpdated});
+      // 動画説明文（<media:description>）。要約機能の入力に使う。
+      const description = getEl(e,'description')?.textContent?.trim() || '';
+
+      posts.push({title, link, date, duration, rssUpdated, description});
     });
   } else {
     feedTitle = doc.querySelector('channel > title')?.textContent?.trim()
@@ -2491,6 +2496,7 @@ function renderFollowCard(f){
             ${durText?`<span class="dp-dur"${durAttr}>${durText}</span>`:''}
           </div>
           <a class="fc-preview-title" href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(p.title)}</a>
+          <button class="fc-copy-btn" style="flex-shrink:0;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;white-space:nowrap;color:var(--pill-monthly);background:#4A1A6B22;border:none;border-radius:99px;padding:2px 9px" onclick="event.stopPropagation();openSummaryModal(${f.id}, '${p.link.replace(/'/g,"\\'")}')" title="AIで要約">要約</button>
           ${thumbHtml}
           <span class="fc-preview-spacer" style="flex:1"></span>
           ${rightButtons}
@@ -3188,6 +3194,105 @@ function saveApiKey(){
   localStorage.setItem('fraidycat_yt_api_key', key);
   closeApiKeyModal();
   setStatus('ok', 'APIキーを保存しました');
+}
+
+/* ── 動画要約（Google Gemini API・無料枠あり）── */
+function openSummaryApiKeyModal(){
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" onclick="closeSummaryApiKeyModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h2>要約APIキー設定</h2>
+      <div class="form-row">
+        <label class="form-label">Google Gemini APIキー</label>
+        <input class="form-input" id="summaryApiKeyInput" type="text"
+          value="${esc(geminiApiKey)}" placeholder="AIza...">
+        <div class="form-hint">
+          aistudio.google.com/apikey で発行したAPIキーを入力してください（無料・クレジットカード登録不要、1日1,500回まで）。動画タイトルの横の「要約」から使用できます。
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeSummaryApiKeyModal()">キャンセル</button>
+        <button class="btn-ok" onclick="saveSummaryApiKey()">保存</button>
+      </div>
+    </div>
+  </div>`;
+}
+function closeSummaryApiKeyModal(){ document.getElementById('modalContainer').innerHTML=''; }
+function saveSummaryApiKey(){
+  const key = document.getElementById('summaryApiKeyInput').value.trim();
+  geminiApiKey = key;
+  localStorage.setItem('fraidycat_gemini_api_key', key);
+  closeSummaryApiKeyModal();
+  setStatus('ok', '要約APIキーを保存しました');
+}
+
+// 要約モーダルを開く（follow id と 動画linkで対象を特定する）
+function openSummaryModal(fid, link){
+  const f = follows.find(x=>x.id===fid);
+  const p = f && f.posts.find(x=>x.link===link);
+  if(!f || !p) return;
+
+  let m = document.getElementById('summaryModal');
+  if(!m){
+    m = document.createElement('div');
+    m.id = 'summaryModal';
+    m.className = 'modal-backdrop';
+    m.onclick = (e)=>{ if(e.target===m) closeSummaryModal(); };
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  m.innerHTML = `<div class="modal" style="max-width:560px;width:92%;max-height:80vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <h2 style="margin:0;font-size:16px">📝 要約</h2>
+      <button class="btn-cancel" style="margin-left:auto" onclick="closeSummaryModal()">閉じる</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.5">${esc(p.title)}</div>
+    <div id="summaryBody" style="overflow-y:auto;flex:1;font-size:13px;line-height:1.7;white-space:pre-wrap">要約を生成中…</div>
+  </div>`;
+
+  runSummary(f, p);
+}
+function closeSummaryModal(){
+  const m = document.getElementById('summaryModal');
+  if(m) m.style.display = 'none';
+}
+
+async function runSummary(f, p){
+  const body = document.getElementById('summaryBody');
+  if(!geminiApiKey){
+    if(body) body.textContent = '要約APIキーが未設定です。ヘッダーの「🧠 要約APIキー」から設定してください。';
+    return;
+  }
+  // RSSの説明文があれば使う（無ければタイトルのみで試みる）
+  const desc = (p.description || '').slice(0, 3000);
+  const prompt = desc
+    ? `あなたは日本語でYouTube動画の要約を作るアシスタントです。以下の動画情報を日本語で3〜5行程度に簡潔に要約してください。\n\nチャンネル名: ${f.name}\nタイトル: ${p.title}\n説明文:\n${desc}`
+    : `あなたは日本語でYouTube動画の要約を作るアシスタントです。以下はタイトルのみです。説明文が無いため内容の推測であることが分かるように一言添えたうえで、日本語で短く要約・補足してください。\n\nチャンネル名: ${f.name}\nタイトル: ${p.title}`;
+
+  try{
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+        signal: AbortSignal.timeout(30000),
+      }
+    );
+    if(!res.ok){
+      const errJson = await res.json().catch(()=>null);
+      const msg = errJson?.error?.message || `HTTP ${res.status}`;
+      if(body) body.textContent = `要約の生成に失敗しました: ${msg}`;
+      return;
+    }
+    const json = await res.json();
+    const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '(要約を取得できませんでした)';
+    if(body) body.textContent = text;
+  }catch(e){
+    if(body) body.textContent = `要約の生成に失敗しました: ${e.message}`;
+  }
 }
 
 const SORT_LABELS = {
