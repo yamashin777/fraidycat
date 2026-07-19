@@ -1042,7 +1042,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0717.11</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.16</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1603,10 +1603,33 @@ function humanizeProxyError(msg){
 // 直近のフェッチで各プロキシがどうだったか（doFetchがログに使う）
 let lastProxyAttempts = [];
 
+// CORSプロキシを介さない直接取得（対応しているサイトのみ成功する）
+async function fetchDirect(url){
+  const r = await fetch(url, {signal:AbortSignal.timeout(8000), mode:'cors'});
+  if(!r.ok) throw new Error(`direct HTTP ${r.status}`);
+  return await r.text();
+}
+
 async function fetchRSSRaw(url){
   let lastErr;
   const n = PROXIES.length;
   const attempts = []; // {proxy, ok, reason}
+
+  // まずCORSプロキシを使わず直接取得を試す。
+  // YouTubeなどCORSに対応していないサイトはここで失敗し、従来通りプロキシへフォールバックする。
+  // 対応しているサイト（多くの一般ブログ・ポッドキャストフィードなど）なら、
+  // プロキシを経由せず高速かつ直接取得できる。
+  try{
+    lastUsedProxy = 'direct';
+    if(loadingCount > 0) updateFetchStatus();
+    const result = await fetchDirect(url);
+    attempts.push({proxy:'direct', ok:true});
+    lastProxyAttempts = attempts;
+    return result;
+  }catch(e){
+    attempts.push({proxy:'direct', ok:false, reason:humanizeProxyError(e?.message)});
+  }
+
   const now0 = Date.now();
 
   // 全プロキシが休止中なら、無駄に4つ確認せず、最も早く明けるものだけ試す
@@ -1959,13 +1982,13 @@ async function doFetch(f){
         }
       }
     }catch(e){}
-    addFetchLog({name:f.name, ok:true, proxy:lastUsedProxy, count:posts.length, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice(), latestPub:(posts[0]&&posts[0].date)?new Date(posts[0].date).getTime():null, subs:f.subscriberCount!=null?f.subscriberCount:null});
+    addFetchLog({id:f.id, name:f.name, ok:true, proxy:lastUsedProxy, count:posts.length, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice(), latestPub:(posts[0]&&posts[0].date)?new Date(posts[0].date).getTime():null, subs:f.subscriberCount!=null?f.subscriberCount:null});
   }catch(e){
     f.error = `取得エラー: ${e.message}`;
     f.posts = f.posts || [];
     const shortName = f.name.length > 16 ? f.name.slice(0, 16) + '…' : f.name;
     showToast(`⚠ ${shortName} の取得に失敗`, 4000);
-    addFetchLog({name:f.name, ok:false, proxy:lastUsedProxy, error:e.message, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice()});
+    addFetchLog({id:f.id, name:f.name, ok:false, proxy:lastUsedProxy, error:e.message, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice()});
   }finally{
     f.loading = false;
     activeFetches = Math.max(0, activeFetches - 1);
@@ -2137,8 +2160,17 @@ function renderRevivalPanel(){
 
 // ── ログ画面 ──
 let logFilter = 'all'; // all / ok / fail
-function openLogModal(){
+let logIdFilter = null;   // 特定チャンネルのidで絞り込む場合に使用
+let logNameFilter = null; // idが無い古いログ用に名前でも絞り込めるようにする
+function openLogModal(f){
   logFilter = 'all';
+  if(f){
+    logIdFilter = f.id;
+    logNameFilter = f.name;
+  } else {
+    logIdFilter = null;
+    logNameFilter = null;
+  }
   let m = document.getElementById('logModal');
   if(!m){
     m = document.createElement('div');
@@ -2146,9 +2178,10 @@ function openLogModal(){
     m.className = 'modal-backdrop';
     m.onclick = (e)=>{ if(e.target===m) closeLogModal(); };
     m.innerHTML = `<div class="modal" style="max-width:720px;width:92%;max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <h2 style="margin:0">取得ログ</h2>
         <div id="logFilterBtns" style="display:flex;gap:4px;margin-left:8px"></div>
+        <div id="logChannelFilter"></div>
         <button class="btn-cancel" style="margin-left:auto" onclick="exportFetchLog()">エクスポート</button>
         <button class="btn-cancel" onclick="clearFetchLog()">クリア</button>
         <button class="btn-cancel" onclick="closeLogModal()">閉じる</button>
@@ -2167,17 +2200,40 @@ function closeLogModal(){
 }
 function setLogFilter(f){ logFilter = f; renderLogModal(); }
 
+function clearLogChannelFilter(){
+  logIdFilter = null;
+  logNameFilter = null;
+  renderLogModal();
+}
+
 function renderLogModal(){
   const body = document.getElementById('logModalBody');
   if(!body) return;
-  // 集計
-  const total = fetchLog.length;
-  const okCount = fetchLog.filter(l=>l.ok).length;
+  // チャンネル絞り込みが指定されていれば対象を限定する
+  // （idが記録されている新しいログはidで、無い古いログは名前で照合する）
+  const scoped = (logIdFilter != null || logNameFilter)
+    ? fetchLog.filter(l => (l.id != null && logIdFilter != null) ? l.id === logIdFilter : l.name === logNameFilter)
+    : fetchLog;
+
+  // チャンネル絞り込みチップの表示
+  const chipEl = document.getElementById('logChannelFilter');
+  if(chipEl){
+    chipEl.innerHTML = logNameFilter
+      ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:99px;background:var(--accent-light);color:var(--accent-mid);border:1px solid var(--accent-mid)">
+          ${esc(logNameFilter)}
+          <button onclick="clearLogChannelFilter()" title="絞り込みを解除" style="border:none;background:none;cursor:pointer;color:inherit;font-size:12px;line-height:1;padding:0">✕</button>
+        </span>`
+      : '';
+  }
+
+  // 集計（チャンネル絞り込み中はその範囲のみで集計する）
+  const total = scoped.length;
+  const okCount = scoped.filter(l=>l.ok).length;
   const failCount = total - okCount;
   const rate = total ? Math.round(okCount/total*100) : 0;
   // プロキシ別集計
   const byProxy = {};
-  fetchLog.forEach(l=>{
+  scoped.forEach(l=>{
     const p = l.proxy || '(不明)';
     if(!byProxy[p]) byProxy[p] = {ok:0, fail:0};
     if(l.ok) byProxy[p].ok++; else byProxy[p].fail++;
@@ -2216,9 +2272,9 @@ function renderLogModal(){
     fb.innerHTML = mk('all','すべて')+mk('ok','成功')+mk('fail','失敗');
   }
   // 一覧
-  let list = fetchLog;
-  if(logFilter==='ok') list = fetchLog.filter(l=>l.ok);
-  else if(logFilter==='fail') list = fetchLog.filter(l=>!l.ok);
+  let list = scoped;
+  if(logFilter==='ok') list = scoped.filter(l=>l.ok);
+  else if(logFilter==='fail') list = scoped.filter(l=>!l.ok);
   if(!list.length){
     body.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-faint);font-size:13px">ログがありません</div>`;
     return;
@@ -2288,6 +2344,7 @@ function renderFollowCard(f){
           onclick="changeFreq(${f.id},'${fr}')">${freqLabel(fr)}</button>`).join('')}
       </div>
       <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}),false)">↻ 今すぐ更新</button>
+      <button class="fc-refresh-btn" onclick="event.stopPropagation();openLogModal(follows.find(x=>x.id===${f.id}))" title="このチャンネルの取得ログだけを表示">📋 取得ログ</button>
       ${f.suspended ? `<button class="fc-refresh-btn" style="color:var(--accent-mid);border-color:var(--accent-mid)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=false;save();render()">▶ 更新を再開</button>` : `<button class="fc-refresh-btn" style="color:var(--text-faint)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=true;save();render()">⏸ 更新外にする</button>`}
       <span class="fc-url-inline" id="url-text-${f.id}" title="${esc(f.url)}">${esc(f.url)}</span>
       <input class="fc-tag-input fc-url-inline" id="url-input-${f.id}"
@@ -2337,6 +2394,19 @@ function renderFollowCard(f){
         onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
         onclick="event.stopPropagation()"
         onchange="event.stopPropagation()">
+    </div>
+    <div class="fc-tag-row" onclick="event.stopPropagation()">
+      <span class="fc-freq-label">アイコン：</span>
+      ${f.iconUrl ? `<img src="${esc(f.iconUrl)}?v=${f.id}" style="width:20px;height:20px;border-radius:4px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+      <input class="fc-tag-input" id="icon-input-${f.id}"
+        value="${esc(f.iconUrl||'')}"
+        placeholder="画像URLを入力（YouTube以外は自動取得されないため手動で設定できます）"
+        title="アイコン画像のURLを設定できます"
+        onblur="changeIcon(${f.id}, this.value)"
+        onkeydown="event.stopPropagation();"
+        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
+        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
+        onclick="event.stopPropagation()">
     </div>`;
 
   const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
@@ -2570,6 +2640,15 @@ function changeMemo(id, val){
     if(f.memo){ memoEl.innerHTML = '📝 <span onclick="event.stopPropagation()">' + linkifyMemo(f.memo) + '</span>'; memoEl.style.display=''; }
     else memoEl.style.display='none';
   }
+}
+
+function changeIcon(id, val){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  const url = val.trim();
+  f.iconUrl = url || null;
+  save();
+  render();
 }
 
 function changeRegDate(id, val){
