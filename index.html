@@ -1042,7 +1042,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.16</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.20</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2439,7 +2439,7 @@ function renderFollowCard(f){
               : `<span class="fc-name">${esc(f.name)}</span>`;
           })()}
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
-          ${f.tags.map(t=>`<span class="fc-tag">${esc(t)}</span>`).join('')}
+          ${f.tags.map(t=>`<span class="fc-tag" onclick="event.stopPropagation();setTag('${t.replace(/'/g, '&#39;')}')" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span onclick="event.stopPropagation()">${linkifyMemo(f.memo)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
           ${f.suspended ? '' : `<span class="freq-pill ${pillClass}">${freqLabel(f.freq)}</span>`}
@@ -2698,6 +2698,9 @@ function changeTag(id, val){
         const span = document.createElement('span');
         span.className = 'fc-tag';
         span.textContent = t;
+        span.title = 'このタグで絞り込む';
+        span.style.cursor = 'pointer';
+        span.onclick = (e)=>{ e.stopPropagation(); setTag(t); };
         topEl.appendChild(span);
       });
     }
