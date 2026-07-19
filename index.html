@@ -29,6 +29,7 @@
   --pill-weekly: #5A3A00;
   --pill-monthly: #4A1A6B;
   --pill-yearly: #5A1A1A;
+  --pill-summary: #0A5C6B;
 }
 @media(prefers-color-scheme:dark) and (max-width:0px){
   :root{
@@ -38,7 +39,7 @@
     --danger:#E06050;--danger-light:#2A1510;
     --tag-bg:#252219;--tag-text:#9A9488;
     --pill-rt:#4A7ADB;--pill-daily:#7CB84A;--pill-weekly:#C89A30;
-    --pill-monthly:#A870E0;--pill-yearly:#E07060;
+    --pill-monthly:#A870E0;--pill-yearly:#E07060;--pill-summary:#4AC8D6;
   }
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1045,7 +1046,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.26</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.28</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2496,7 +2497,7 @@ function renderFollowCard(f){
             ${durText?`<span class="dp-dur"${durAttr}>${durText}</span>`:''}
           </div>
           <a class="fc-preview-title" href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(p.title)}</a>
-          <button class="fc-copy-btn" style="flex-shrink:0;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;white-space:nowrap;color:var(--pill-monthly);background:#4A1A6B22;border:none;border-radius:99px;padding:2px 9px" onclick="event.stopPropagation();openSummaryModal(${f.id}, '${p.link.replace(/'/g,"\\'")}')" title="AIで要約">要約</button>
+          ${(p.duration===-2||p.duration===-3) ? '' : `<button class="fc-copy-btn" style="flex-shrink:0;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;white-space:nowrap;color:var(--pill-summary);background:#0A5C6B22;border:none;border-radius:99px;padding:2px 9px" onclick="event.stopPropagation();openSummaryModal(${f.id}, '${p.link.replace(/'/g,"\\'")}')" title="AIで要約">要約</button>`}
           ${thumbHtml}
           <span class="fc-preview-spacer" style="flex:1"></span>
           ${rightButtons}
