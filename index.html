@@ -1042,7 +1042,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.20</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.21</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2397,7 +2397,7 @@ function renderFollowCard(f){
     </div>
     <div class="fc-tag-row" onclick="event.stopPropagation()">
       <span class="fc-freq-label">アイコン：</span>
-      ${f.iconUrl ? `<img src="${esc(f.iconUrl)}?v=${f.id}" style="width:20px;height:20px;border-radius:4px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+      ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" style="width:20px;height:20px;border-radius:4px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">` : ''}
       <input class="fc-tag-input" id="icon-input-${f.id}"
         value="${esc(f.iconUrl||'')}"
         placeholder="画像URLを入力（YouTube以外は自動取得されないため手動で設定できます）"
@@ -2419,7 +2419,7 @@ function renderFollowCard(f){
       <!-- PCではfc-previewにアイコンを表示、スマホではここに表示 -->
       <div class="fc-avatar-mobile-wrap" style="display:none;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
         <div class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
-          ${f.iconUrl ? `<img src="${esc(f.iconUrl)}?v=${f.id}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
+          ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" alt="${esc(f.initials)}" onerror="this.style.display='none'">` : ''}
           ${f.initials}
         </div>
         ${fmtSubscribers(f.subscriberCount)?`<span class="fc-sub-count">${fmtSubscribers(f.subscriberCount)}</span>`:''}
@@ -2475,7 +2475,7 @@ function renderFollowCard(f){
         const leftAvatar = pi===0
           ? `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
               <div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
-                ${f.iconUrl?`<img src="${esc(f.iconUrl)}?v=${f.id}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
+                ${f.iconUrl?`<img src="${esc(iconSrc(f))}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
                 ${esc(f.initials)}
               </div>
               ${subStr?`<span class="fc-sub-count">${subStr}</span>`:''}
@@ -3623,7 +3623,7 @@ function tlCard(p, mode){
 
   return `<div class="tl-card">
     <div class="tl-avatar" style="background:${p.bg};color:${p.fg}">
-      ${p.follow.iconUrl ? `<img src="${esc(p.follow.iconUrl)}?v=${p.follow.id}" alt="${esc(p.follow.initials)}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:6px;position:absolute;inset:0">` : ''}
+      ${p.follow.iconUrl ? `<img src="${esc(iconSrc(p.follow))}" alt="${esc(p.follow.initials)}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;border-radius:6px;position:absolute;inset:0">` : ''}
       ${p.follow.initials}
     </div>
     <div class="tl-body">
@@ -3988,6 +3988,18 @@ function setTag(t){
 }
 function setFreq(f){ activeFreq=f; render(); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// アイコン画像のsrcを組み立てる。
+// YouTube/Googleのサムネイル画像はキャッシュ回避用の?vパラメータを付けても問題ないが、
+// X(Twitter)のpbs.twimg.comなど、想定外のクエリパラメータが付くと画像を返さないCDNもあるため、
+// そういったURLにはパラメータを付けずそのまま使う。
+function iconSrc(f){
+  if(!f || !f.iconUrl) return '';
+  if(/ytimg\.com|googleusercontent\.com/i.test(f.iconUrl)){
+    return `${f.iconUrl}?v=${f.id}`;
+  }
+  return f.iconUrl;
+}
 
 /* ── Import ── */
 function parseImportText(text){
