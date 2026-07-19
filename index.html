@@ -1046,7 +1046,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0720.01</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0720.04</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2337,6 +2337,22 @@ function openFollowSettingsFromLog(id){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
   closeLogModal();
+  // タイムライン系の表示（新着順・長い順・短い順）ではチャンネルごとの展開パネルが
+  // そもそも存在しないため、先に「チャンネル順」表示へ切り替えてから展開する。
+  if(!['freq','registered-desc','registered-asc','subscribers-desc','fetched-desc','fetched-asc'].includes(sortMode)){
+    setSortMode('freq');
+  }
+  // タグ・検索の絞り込みで対象チャンネルが表示から除外されていないか確認する
+  activeTag = 'すべて';
+  activeFreq = null;
+  if(searchQuery){
+    searchQuery = '';
+    const input = document.getElementById('searchInput');
+    if(input) input.value = '';
+    const clr = document.getElementById('searchClear');
+    if(clr) clr.style.display = 'none';
+  }
+  render();
   if(expanded !== f.id){
     toggleExpand(f.id);
   } else {
