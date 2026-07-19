@@ -1046,7 +1046,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0719.28</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0720.01</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2312,14 +2312,48 @@ function renderLogModal(){
       }).join('<span style="color:var(--text-faint)"> → </span>');
       attemptsRow = `<div style="padding:0 8px 6px 36px;font-size:11px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.015)">${parts}</div>`;
     }
+    // ログの対象チャンネルを特定（idがあればidで、無ければ名前で）
+    const targetFollow = (l.id != null && follows.find(x=>x.id===l.id)) || follows.find(x=>x.name===l.name);
+    const suspendBtn = (!l.ok && targetFollow)
+      ? (targetFollow.suspended
+          ? `<span style="flex-shrink:0;font-size:11px;color:var(--text-faint)">対象外済み</span>`
+          : `<button onclick="event.stopPropagation();suspendFromLog(${targetFollow.id})" style="flex-shrink:0;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--danger);color:var(--danger);background:none;cursor:pointer">対象外にする</button>`)
+      : '';
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;${attemptsRow?'':'border-bottom:1px solid var(--border);'}font-size:12px">
       <span style="color:${color};font-weight:bold;width:14px;flex-shrink:0">${icon}</span>
       <span style="color:var(--text-faint);font-family:'DM Mono',monospace;flex-shrink:0">${date} ${time}</span>
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name||'')}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${targetFollow?'cursor:pointer;color:var(--accent-mid);text-decoration:underline dotted':''}"
+        ${targetFollow?`onclick="event.stopPropagation();openFollowSettingsFromLog(${targetFollow.id})" title="このチャンネルの設定を開く"`:''}
+      >${esc(l.name||'')}</span>
       ${via} ${ms}
       <span style="color:${l.ok?'var(--text-muted)':color};flex-shrink:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${detail}</span>
+      ${suspendBtn}
     </div>${attemptsRow}`;
   }).join('');
+}
+
+// ログ画面からチャンネル名をクリックして、そのチャンネルの設定（展開パネル）を開く
+function openFollowSettingsFromLog(id){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  closeLogModal();
+  if(expanded !== f.id){
+    toggleExpand(f.id);
+  } else {
+    const card = document.getElementById(`fc-${f.id}`);
+    if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+}
+
+// ログ画面から、エラーになったチャンネルを直接「更新対象外」にする
+function suspendFromLog(id){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  f.suspended = true;
+  save();
+  renderLogModal();
+  render();
+  setStatus('ok', `「${f.name}」を更新対象外にしました`);
 }
 
 /* ── Render ── */
