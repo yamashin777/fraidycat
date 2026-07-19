@@ -1046,7 +1046,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0720.06</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0720.07</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1632,18 +1632,21 @@ async function fetchRSSRaw(url){
   const attempts = []; // {proxy, ok, reason}
 
   // まずCORSプロキシを使わず直接取得を試す。
-  // YouTubeなどCORSに対応していないサイトはここで失敗し、従来通りプロキシへフォールバックする。
   // 対応しているサイト（多くの一般ブログ・ポッドキャストフィードなど）なら、
   // プロキシを経由せず高速かつ直接取得できる。
-  try{
-    lastUsedProxy = 'direct';
-    if(loadingCount > 0) updateFetchStatus();
-    const result = await fetchDirect(url);
-    attempts.push({proxy:'direct', ok:true});
-    lastProxyAttempts = attempts;
-    return result;
-  }catch(e){
-    attempts.push({proxy:'direct', ok:false, reason:humanizeProxyError(e?.message)});
+  // ただしYouTubeはCORSに対応しておらず必ず失敗するとわかっているため、
+  // 無駄な試行・ログを避けるためここでは試さずプロキシへ直行する。
+  if(!/youtube\.com/i.test(url)){
+    try{
+      lastUsedProxy = 'direct';
+      if(loadingCount > 0) updateFetchStatus();
+      const result = await fetchDirect(url);
+      attempts.push({proxy:'direct', ok:true});
+      lastProxyAttempts = attempts;
+      return result;
+    }catch(e){
+      attempts.push({proxy:'direct', ok:false, reason:humanizeProxyError(e?.message)});
+    }
   }
 
   const now0 = Date.now();
