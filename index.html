@@ -1052,7 +1052,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0725.20</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0726.22</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2144,10 +2144,10 @@ function renderRevivalHistory(){
     const date = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border);font-size:12px">
       <span class="rv-badge" style="flex-shrink:0">${r.gapDays}日ぶり</span>
-      <a href="${esc(r.link)}" target="_blank" rel="noopener" style="flex:1;min-width:0;text-decoration:none;display:flex;flex-direction:column;overflow:hidden">
-        <span style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
-        <span style="color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title||'')}</span>
-      </a>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+        <span onclick="openFollowPanel(${r.id})" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
+        <a href="${esc(r.link)}" target="_blank" rel="noopener" style="text-decoration:none;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title||'')}</a>
+      </div>
       <span style="color:var(--text-faint);flex-shrink:0;font-family:'DM Mono',monospace">${date}</span>
     </div>`;
   }).join('');
@@ -2170,10 +2170,10 @@ function renderRevivalPanel(){
     const safeTitle = esc(r.title||'');
     return `<div class="rv-item">
       <span class="rv-badge">${r.gapDays}日ぶり</span>
-      <a class="rv-link" href="${esc(r.link)}" target="_blank" rel="noopener" title="${safeTitle}">
-        <span class="rv-name">${safeName}</span>
-        <span class="rv-title">${safeTitle}</span>
-      </a>
+      <div class="rv-link" style="display:flex;flex-direction:column;overflow:hidden">
+        <span class="rv-name" onclick="event.stopPropagation();openFollowPanel(${r.id})" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content">${safeName}</span>
+        <a class="rv-title" href="${esc(r.link)}" target="_blank" rel="noopener" title="${safeTitle}" style="text-decoration:none;color:inherit">${safeTitle}</a>
+      </div>
       <button class="rv-x" onclick="dismissRevival(${r.id})" title="消す">✕</button>
     </div>`;
   }).join('');
@@ -2343,7 +2343,7 @@ function renderLogModal(){
       <span style="color:${color};font-weight:bold;width:14px;flex-shrink:0">${icon}</span>
       <span style="color:var(--text-faint);font-family:'DM Mono',monospace;flex-shrink:0">${date} ${time}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${targetFollow?'cursor:pointer;color:var(--accent-mid);text-decoration:underline dotted':''}"
-        ${targetFollow?`onclick="event.stopPropagation();openFollowSettingsFromLog(${targetFollow.id})" title="このチャンネルの設定を開く"`:''}
+        ${targetFollow?`onclick="event.stopPropagation();openFollowPanel(${targetFollow.id})" title="このチャンネルの設定を開く"`:''}
       >${esc(l.name||'')}</span>
       ${via} ${ms}
       <span style="color:${l.ok?'var(--text-muted)':color};flex-shrink:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${detail}</span>
@@ -2353,10 +2353,12 @@ function renderLogModal(){
 }
 
 // ログ画面からチャンネル名をクリックして、そのチャンネルの設定（展開パネル）を開く
-function openFollowSettingsFromLog(id){
+function openFollowPanel(id){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
   closeLogModal();
+  const rvHistModal = document.getElementById('revivalHistModal');
+  if(rvHistModal) rvHistModal.style.display = 'none';
   // タイムライン系の表示（新着順・長い順・短い順）ではチャンネルごとの展開パネルが
   // そもそも存在しないため、先に「チャンネル順」表示へ切り替える。
   if(!['freq','registered-desc','registered-asc','subscribers-desc','fetched-desc','fetched-asc'].includes(sortMode)){
