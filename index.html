@@ -932,7 +932,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
     <button class="hdr-btn data" onclick="exportJSON()" ontouchend="event.preventDefault();exportJSON()">↓ JSONエクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
     <button class="hdr-btn data" onclick="document.getElementById('importJsonFile').click()" ontouchend="event.preventDefault();document.getElementById('importJsonFile').click()">↑ JSONインポート<span class="tooltip">JSONファイルからデータを読み込み</span></button>
     <button class="hdr-btn data" onclick="openLogModal()">📋 ログ<span class="tooltip">取得ログ・成功率・プロキシ別統計を確認</span></button>
-    <button class="hdr-btn data" onclick="openRevivalHistory()">🎉 久しぶり<span class="tooltip">久しぶりに更新されたチャンネルの履歴（新着動画を検知した際、その投稿と直前の投稿の間隔が14日以上あいていた場合に表示されます）</span></button>
+    <button class="hdr-btn data" onclick="openRevivalHistory()">🎉 久しぶり<span class="tooltip">久しぶりに更新されたチャンネルの履歴（新着動画を検知した際、その投稿と直前の投稿の間隔が設定日数以上あいていた場合に表示されます。日数は履歴画面から変更可能）</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <input type="file" id="importJsonFile" accept=".json" style="display:none" onchange="importJSON(event)">
     <button class="hdr-btn api" onclick="openBulkFreqModal()" ontouchend="event.preventDefault();openBulkFreqModal()">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
@@ -1052,7 +1052,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0731.20</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0731.21</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1194,6 +1194,8 @@ let searchQuery = '';
 let tagOrder = JSON.parse(localStorage.getItem('fraidycat_tag_order') || '[]');
 let ytApiKey = localStorage.getItem('fraidycat_yt_api_key') || '';
 let geminiApiKey = localStorage.getItem('fraidycat_gemini_api_key') || '';
+// 「久しぶり更新」とみなす間隔（日数）。設定画面（久しぶり履歴）から変更可能。
+let revivalThresholdDays = parseInt(localStorage.getItem('fraidycat_revival_threshold_days'), 10) || 14;
 
 /* ── GitHub同期設定 ── */
 let ghToken = localStorage.getItem('fraidycat_gh_token') || '';
@@ -2018,14 +2020,14 @@ async function doFetch(f){
     f.lastFetched = Date.now();
     f.error = null;
     if(feedTitle && f.name === f.url) f.name = feedTitle;
-    // 新着があり、かつ最新動画とその前の動画の間隔が14日以上なら「久しぶり更新」
+    // 新着があり、かつ最新動画とその前の動画の間隔が設定日数以上なら「久しぶり更新」
     try{
       if(posts.length && posts[0].link !== prevLatestLink && prevLatestLink !== null){
         const d0 = posts[0].date ? new Date(posts[0].date) : null;
         const d1 = posts[1] && posts[1].date ? new Date(posts[1].date) : null;
         if(d0 && d1 && !isNaN(d0) && !isNaN(d1)){
           const gapDays = (d0 - d1) / (24*60*60*1000);
-          if(gapDays >= 14){
+          if(gapDays >= revivalThresholdDays){
             markRevival(f, Math.round(gapDays), posts[0]);
           }
         }
@@ -2148,9 +2150,13 @@ function openRevivalHistory(){
     m.className = 'modal-backdrop';
     m.onclick = (e)=>{ if(e.target===m) m.style.display='none'; };
     m.innerHTML = `<div class="modal" style="max-width:640px;width:92%;max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <h2 style="margin:0">🎉 久しぶり更新の履歴</h2>
-        <span title="新着動画を検知した際、その投稿と直前の投稿の間隔が14日以上あいていた場合に表示されます" style="cursor:help;color:var(--text-faint);font-size:13px;border:1px solid var(--border-strong);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
+        <span id="revivalHistTip" title="${revivalTooltipText()}" style="cursor:help;color:var(--text-faint);font-size:13px;border:1px solid var(--border-strong);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
+        <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted)">
+          <input type="number" id="revivalThresholdInput" min="1" max="365" value="${revivalThresholdDays}" style="width:52px;padding:2px 4px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px" onchange="setRevivalThreshold(this.value)">
+          <span>日以上で「久しぶり」</span>
+        </div>
         <button class="btn-cancel" style="margin-left:auto" onclick="clearRevivalHistory()">クリア</button>
         <button class="btn-cancel" onclick="document.getElementById('revivalHistModal').style.display='none'">閉じる</button>
       </div>
@@ -2160,6 +2166,26 @@ function openRevivalHistory(){
   }
   m.style.display = 'flex';
   renderRevivalHistory();
+}
+function revivalTooltipText(){
+  return `新着動画を検知した際、その投稿と直前の投稿の間隔が${revivalThresholdDays}日以上あいていた場合に表示されます`;
+}
+function setRevivalThreshold(v){
+  const n = parseInt(v, 10);
+  const input = document.getElementById('revivalThresholdInput');
+  if(!n || n < 1){
+    showToast('1以上の数値を入力してください', 2500);
+    if(input) input.value = revivalThresholdDays;
+    return;
+  }
+  revivalThresholdDays = n;
+  try{ localStorage.setItem('fraidycat_revival_threshold_days', String(n)); }catch(e){}
+  if(input) input.value = n;
+  const tip = document.getElementById('revivalHistTip');
+  if(tip) tip.title = revivalTooltipText();
+  const panelTip = document.getElementById('revivalPanelTip');
+  if(panelTip) panelTip.title = revivalTooltipText();
+  showToast(`「久しぶり」の判定を${n}日以上に変更しました`, 2500);
 }
 function clearRevivalHistory(){
   revivalHistory = [];
@@ -2213,7 +2239,7 @@ function renderRevivalPanel(){
   }).join('');
   panel.innerHTML = `<div class="rv-head">
       <span class="rv-title-main">🎉 久しぶりに更新されたチャンネル（${revivals.length}）</span>
-      <span title="新着動画を検知した際、その投稿と直前の投稿の間隔が14日以上あいていた場合に表示されます" style="cursor:help;color:var(--text-faint);font-size:12px;border:1px solid var(--border-strong);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
+      <span id="revivalPanelTip" title="${revivalTooltipText()}" style="cursor:help;color:var(--text-faint);font-size:12px;border:1px solid var(--border-strong);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
       <button class="rv-clear" onclick="openRevivalHistory()">履歴</button>
       <button class="rv-clear" onclick="dismissAllRevivals()">すべて消す</button>
     </div>
