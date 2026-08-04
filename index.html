@@ -1052,7 +1052,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0731.23</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0731.24</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1237,13 +1237,25 @@ async function loadFromGitHub(){
     const bytes = new Uint8Array(binStr.length);
     for(let i=0; i<binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
     const decoded = JSON.parse(new TextDecoder().decode(bytes));
-    // 新形式（{follows, tagOrder}）と旧形式（配列）の両対応
+    // 新形式（{follows, tagOrder, revivalHistory, revivalThresholdDays}）と旧形式（配列）の両対応
     const followsData = Array.isArray(decoded) ? decoded : decoded.follows;
     const tagOrderData = decoded.tagOrder || null;
     if(!Array.isArray(followsData)) return false;
+
+    // 文字化けチェック（壊れたデータでローカルを上書きしないため）
+    const firstName = followsData[0]?.name || '';
+    const hasGarbled = /[\uFFFD\u0000-\u001F]/.test(firstName) ||
+      (firstName.length > 0 && !/[\u0020-\u007E\u3000-\u9FFF\uF900-\uFAFF]/.test(firstName));
+    if(hasGarbled){ console.warn('GitHub data appears garbled, skipping load'); return false; }
+    // GitHub側の件数がローカルより大幅に少ない場合は、データ消失を避けるためローカルを優先する
+    if(follows.length > 0 && followsData.length < follows.length * 0.8){
+      console.warn(`GitHub(${followsData.length}) << Local(${follows.length}), skipping load`);
+      return false;
+    }
+
     console.log('loadFromGitHub tagOrderData:', tagOrderData?.length||'なし', tagOrderData?.slice(0,3));
-    if(tagOrderData && tagOrderData.length > 0){ 
-      tagOrder = tagOrderData; 
+    if(tagOrderData && tagOrderData.length > 0){
+      tagOrder = tagOrderData;
       localStorage.setItem('fraidycat_tag_order', JSON.stringify(tagOrder));
       console.log('tagOrder set to:', tagOrder.length, tagOrder.slice(0,3));
     }
@@ -1258,6 +1270,26 @@ async function loadFromGitHub(){
       loading: false,
       error: f.error||null,
     }));
+
+    // 久しぶり履歴は他端末の分と統合する（linkで重複排除しつつ両方の内容を残す）
+    if(Array.isArray(decoded.revivalHistory) && decoded.revivalHistory.length){
+      const merged = [...revivalHistory, ...decoded.revivalHistory];
+      const seen = new Set();
+      const dedup = [];
+      for(const r of merged.sort((a,b)=>(b.at||0)-(a.at||0))){
+        if(!r || !r.link || seen.has(r.link)) continue;
+        seen.add(r.link);
+        dedup.push(r);
+      }
+      revivalHistory = dedup.slice(0, REVIVAL_HISTORY_MAX);
+      try{ localStorage.setItem('fraidycat_revival_history', JSON.stringify(revivalHistory)); }catch(e){}
+    }
+    // 久しぶり判定日数はGitHub側を優先し、他端末で設定した値に揃える
+    if(decoded.revivalThresholdDays){
+      revivalThresholdDays = decoded.revivalThresholdDays;
+      try{ localStorage.setItem('fraidycat_revival_threshold_days', String(revivalThresholdDays)); }catch(e){}
+    }
+
     save(false); // localStorageにも保存（GitHub同期はしない）
     return true;
   }catch(e){
@@ -1298,7 +1330,7 @@ async function saveToGitHub(retryCount){
       ...f,
       posts:(f.posts||[]).map(p=>({...p,date:p.date instanceof Date?p.date.toISOString():(p.date||null)}))
     }));
-    const jsonStr = JSON.stringify({follows: data, tagOrder: tagOrder});
+    const jsonStr = JSON.stringify({follows: data, tagOrder: tagOrder, revivalHistory: revivalHistory, revivalThresholdDays: revivalThresholdDays});
     const bytes = new TextEncoder().encode(jsonStr);
     const binStr = Array.from(bytes).map(b=>String.fromCharCode(b)).join('');
     const content = btoa(binStr);
@@ -2147,6 +2179,9 @@ let revivalHistory = [];
 try{ const s=localStorage.getItem('fraidycat_revival_history'); if(s) revivalHistory=JSON.parse(s)||[]; }catch(e){ revivalHistory=[]; }
 const REVIVAL_HISTORY_MAX = 200;
 function markRevival(f, gapDays, post){
+  // 他端末で既に検知・通知済み（GitHub同期で取り込んだ履歴に含まれる）なら、
+  // このチャンネルの久しぶり検知については二重に通知しない
+  if(revivalHistory.some(r=>r.link === post.link)) return;
   revivals = revivals.filter(r=>r.id !== f.id);
   revivals.unshift({id:f.id, name:f.name, gapDays, title:post.title, link:post.link, at:Date.now()});
   if(revivals.length > 30) revivals = revivals.slice(0,30);
@@ -5157,89 +5192,33 @@ setTimeout(()=>{ try{ checkFetchSchedules(); }catch(e){} }, 8000);
   }
 })();
 
-/* GitHub同期が有効なら起動時に読み込み */
+/* GitHub同期が有効なら起動時に読み込み。
+   以前はここに専用の読み込み処理を別途持っていたが、
+   {follows,tagOrder}形式のデータを配列と誤判定して常に無処理で終わってしまう
+   不具合があり、実質的に起動時の同期が機能していなかった。
+   loadFromGitHub()（設定画面から手動同期する際に使う、形式に正しく対応した
+   関数）を共通で使うようにして修正した。 */
+async function syncPullFromGitHub(showStatus){
+  if(!ghSyncEnabled || !ghToken || !ghRepo) return false;
+  if(showStatus) setStatus('loading', 'GitHub同期中...');
+  const ok = await loadFromGitHub();
+  if(ok){
+    render();
+    renderTags();
+    renderRevivalPanel();
+    if(showStatus) setStatus('ok',`GitHub同期完了（${follows.length}件・タグ順${tagOrder.length}件）`);
+  } else if(showStatus){
+    setStatus('warn', '⚠ GitHub読込に失敗、またはスキップしました');
+  }
+  return ok;
+}
 if(ghSyncEnabled && ghToken && ghRepo){
   console.log('Boot: GitHub同期開始', 'enabled:', ghSyncEnabled, 'token:', !!ghToken, 'repo:', ghRepo);
-  setTimeout(async ()=>{
-    try{
-      setStatus('loading', 'GitHub同期中...');
-      const res = await fetch(
-        `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
-        {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'}}
-      );
-      if(!res.ok){
-        const err = await res.json().catch(()=>({}));
-        setStatus('warn', `⚠ GitHub読込失敗: ${err.message||res.status}`);
-        return;
-      }
-      const json = await res.json();
-      ghSha = json.sha;
-      const b64 = json.content.replace(/\n/g,'');
-
-      // TextDecoderで試みる（新方式）
-      let ghData;
-      try{
-        const binStr = atob(b64);
-        const bytes = new Uint8Array(binStr.length);
-        for(let i=0; i<binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
-        const decoded = new TextDecoder().decode(bytes);
-        ghData = JSON.parse(decoded);
-      }catch(e){
-        // 旧方式フォールバック（文字化けしたデータの場合はスキップ）
-        console.warn('GitHub load decode error, skipping:', e);
-        return;
-      }
-
-      if(!Array.isArray(ghData)) return;
-
-      // 文字化けチェック
-      const firstName = ghData[0]?.name || '';
-      const hasGarbled = /[\uFFFD\u0000-\u001F]/.test(firstName) ||
-        (firstName.length > 0 && !/[\u0020-\u007E\u3000-\u9FFF\uF900-\uFAFF]/.test(firstName));
-      if(hasGarbled){
-        console.warn('GitHub data appears garbled, pushing local data to GitHub');
-        ghSha = json.sha;
-        await saveToGitHub();
-        return;
-      }
-
-      // GitHubのデータ件数がローカルより大幅に少ない場合はローカル優先
-      if(ghData.length < follows.length * 0.8){
-        console.warn(`GitHub(${ghData.length}) << Local(${follows.length}), using local data`);
-        ghSha = json.sha;
-        await saveToGitHub();
-        return;
-      }
-
-      // GitHubを常に優先（件数に関わらず）
-      if(ghTagOrder){ 
-        tagOrder = ghTagOrder; 
-        localStorage.setItem('fraidycat_tag_order', JSON.stringify(tagOrder));
-        console.log('tagOrder loaded from GitHub:', tagOrder.length, '件', tagOrder.slice(0,3));
-      } else {
-        console.log('tagOrder not found in GitHub data');
-      }
-      follows = ghData.map(f=>({
-        ...f,
-        freq: migrateFreq(f.freq),
-        registeredAt: f.registeredAt || f.id || Date.now(),
-        posts: (f.posts||[]).map(p=>({
-          ...p,
-          date: p.date ? new Date(p.date) : null
-        })).filter(p=>!p.date||!isNaN(p.date.getTime())),
-        loading: false,
-        error: f.error||null,
-      }));
-      save(false);
-      render();
-      renderTags();
-      setStatus('ok',`GitHub同期完了（${follows.length}件・タグ順${tagOrder.length}件）`);
-    }catch(e){
-      console.warn('GitHub boot load error:', e);
-    }
-  }, 500);
+  setTimeout(()=>{ syncPullFromGitHub(true); }, 500);
 }
-
+// タブを開きっぱなしにしていても、他端末の更新（久しぶり履歴・設定日数など）を
+// 取り込めるよう、24時間ごとに再同期する（起動時の1回だけでは反映されないため）。
+setInterval(()=>{ syncPullFromGitHub(false); }, 24 * 60 * 60 * 1000);
 /* 初回フェッチ: キューに順番に追加（setTimeoutを大量生成しない） */
 if(follows.length){
   const toFetch = follows.filter(f => shouldRefetch(f));
