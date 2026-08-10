@@ -1052,7 +1052,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.11</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.12</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1083,16 +1083,37 @@ function runDelegatedAction(el, evt){
   if(el.dataset.args){
     try{ args = JSON.parse(el.dataset.args); }catch(err){ console.warn('data-args解析失敗:', el.dataset.args, err); }
   }
-  args = args.map(a => a === '@value' ? el.value : a);
+  args = args.map(a => a === '@value' ? el.value : a === '@el' ? el : a);
   fn(...args, evt);
 }
 document.addEventListener('click', function(e){
   const el = e.target.closest('[data-click="1"]');
-  if(el) runDelegatedAction(el, e);
+  if(el){ runDelegatedAction(el, e); return; }
+  // フォローカードは全体がクリックで展開／折りたたみできる。
+  // ただし詳細パネル・登録日ポップアップ・メモ・リンク・入力欄の上でのクリックは対象外にする
+  // （以前はカード自身のonclick属性＋event.stopPropagationで実現していたが、
+  // stopPropagationはこのdocument委任リスナーより手前で伝播を止めてしまい
+  // 委任の仕組みごと機能しなくなるため、代わりにここで除外判定する）。
+  const card = e.target.closest('.follow-card');
+  if(card && !e.target.closest('.fc-detail,.fc-regdate-popup,.fc-memo-inline,a,input,textarea,select,.dp-dur')){
+    const id = Number(card.id.replace('fc-',''));
+    if(!isNaN(id)) toggleExpand(id);
+  }
 });
 document.addEventListener('change', function(e){
   const el = e.target.closest('[data-change="1"]');
   if(el) runDelegatedAction(el, e);
+});
+// blurはバブリングしないため、代わりにバブリングするfocusoutで拾う
+document.addEventListener('focusout', function(e){
+  const el = e.target.closest('[data-blur="1"]');
+  if(el) runDelegatedAction(el, e);
+});
+// テキスト入力欄でEnterを押したらフォーカスを外す（＝data-blurの確定処理を発火させる）
+document.addEventListener('keyup', function(e){
+  if(e.key !== 'Enter') return;
+  const el = e.target.closest('[data-enter-blur="1"]');
+  if(el) el.blur();
 });
 
 /* ── CORS proxy options (tried in order) ── */
@@ -2646,83 +2667,64 @@ function renderFollowCard(f){
 
   // 頻度セレクター＋タグ編集（展開時に表示）
   const freqSelector = `
-    <div class="fc-freq-row" onclick="event.stopPropagation()">
+    <div class="fc-freq-row">
       <span class="fc-freq-label">更新頻度：</span>
       <div class="fc-freq-btns">
         ${FREQS.map(fr=>`<button class="fc-freq-btn${f.freq===fr?' active':''}"
-          onclick="changeFreq(${f.id},'${fr}')">${freqLabel(fr)}</button>`).join('')}
+          data-click="1" data-action="changeFreq" data-args="${dargs([f.id, fr])}">${freqLabel(fr)}</button>`).join('')}
       </div>
-      <button class="fc-refresh-btn" onclick="event.stopPropagation();enqueueFetch(follows.find(x=>x.id===${f.id}),false)">↻ 今すぐ更新</button>
-      <button class="fc-refresh-btn" onclick="event.stopPropagation();openLogModal(follows.find(x=>x.id===${f.id}))" title="このチャンネルの取得ログだけを表示">📋 取得ログ</button>
-      ${f.suspended ? `<button class="fc-refresh-btn" style="color:var(--accent-mid);border-color:var(--accent-mid)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=false;save();render()">▶ 更新を再開</button>` : `<button class="fc-refresh-btn" style="color:var(--text-faint)" onclick="event.stopPropagation();follows.find(x=>x.id===${f.id}).suspended=true;save();render()">⏸ 更新外にする</button>`}
+      <button class="fc-refresh-btn" data-click="1" data-action="enqueueFetchById" data-args="[${f.id}]">↻ 今すぐ更新</button>
+      <button class="fc-refresh-btn" data-click="1" data-action="openLogModalById" data-args="[${f.id}]" title="このチャンネルの取得ログだけを表示">📋 取得ログ</button>
+      ${f.suspended ? `<button class="fc-refresh-btn" style="color:var(--accent-mid);border-color:var(--accent-mid)" data-click="1" data-action="toggleSuspend" data-args="[${f.id}]">▶ 更新を再開</button>` : `<button class="fc-refresh-btn" style="color:var(--text-faint)" data-click="1" data-action="toggleSuspend" data-args="[${f.id}]">⏸ 更新外にする</button>`}
       <span class="fc-url-inline" id="url-text-${f.id}" title="${esc(f.url)}">${esc(f.url)}</span>
       <input class="fc-tag-input fc-url-inline" id="url-input-${f.id}"
         value="${esc(f.url)}"
         title="RSSフィードのURLを編集できます"
-        onblur="this.style.display='none';document.getElementById('url-text-${f.id}').style.display='';changeUrl(${f.id}, this.value);"
-        onkeydown="event.stopPropagation();"
-        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
-        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
-        onclick="event.stopPropagation()"
+        data-blur="1" data-action="commitUrlEdit" data-args="${dargs([f.id, '@value'])}"
+        data-enter-blur="1"
         style="display:none;flex:1;min-width:200px">
-      <button class="fc-copy-btn" onclick="event.stopPropagation();document.getElementById('url-text-${f.id}').style.display='none';const i=document.getElementById('url-input-${f.id}');i.style.display='';i.focus();i.select();" title="URLを編集" style="color:var(--accent-mid)">✏️</button>
+      <button class="fc-copy-btn" data-click="1" data-action="editUrlInline" data-args="[${f.id}]" title="URLを編集" style="color:var(--accent-mid)">✏️</button>
     </div>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
-      <span class="fc-freq-label">チャンネル名：</span>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
+    <div class="fc-tag-row">
       <span class="fc-freq-label">チャンネル名：</span>
       <input class="fc-tag-input" id="name-input-${f.id}"
         value="${esc(f.name)}"
         placeholder="チャンネル名"
         title="チャンネル名を編集できます"
-        onblur="changeName(${f.id}, this.value)"
-        onkeydown="event.stopPropagation();"
-        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
-        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
-        onclick="event.stopPropagation()"
+        data-blur="1" data-action="changeName" data-args="${dargs([f.id, '@value'])}"
+        data-enter-blur="1"
         style="max-width:180px">
       <span class="fc-freq-label" title="カンマ・スペース・全角スペースで区切って複数入力できます" style="cursor:help;text-decoration:underline dotted;margin-left:4px">タグ：</span>
       <input class="fc-tag-input" id="tag-input-${f.id}"
         value="${esc(f.tags.join(', '))}"
         placeholder="例: キャンプ tech（スペース・カンマ区切り）"
         title="カンマ・半角スペース・全角スペースで区切って複数入力できます"
-        onblur="changeTag(${f.id}, this.value)"
-        onkeydown="event.stopPropagation();"
-        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
-        onkeyup="event.stopPropagation();if(event.key==='Enter'){changeTag(${f.id},this.value);this.blur();}"
-        onclick="event.stopPropagation();this.select()">
+        data-blur="1" data-action="changeTag" data-args="${dargs([f.id, '@value'])}"
+        data-enter-blur="1">
     </div>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
+    <div class="fc-tag-row">
       <span class="fc-freq-label">メモ：</span>
       <input class="fc-tag-input" id="memo-input-${f.id}"
         value="${esc(f.memo||'')}"
         placeholder="メモや備考..."
-        onblur="changeMemo(${f.id}, this.value)"
-        onkeydown="event.stopPropagation();"
-        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
-        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
-        onclick="event.stopPropagation()"
-        onchange="event.stopPropagation()">
+        data-blur="1" data-action="changeMemo" data-args="${dargs([f.id, '@value'])}"
+        data-enter-blur="1">
     </div>
-    <div class="fc-tag-row" onclick="event.stopPropagation()">
+    <div class="fc-tag-row">
       <span class="fc-freq-label">アイコン：</span>
       ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" style="width:20px;height:20px;border-radius:4px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">` : ''}
       <input class="fc-tag-input" id="icon-input-${f.id}"
         value="${esc(f.iconUrl||'')}"
         placeholder="画像URLを入力（YouTube以外は自動取得されないため手動で設定できます）"
         title="アイコン画像のURLを設定できます"
-        onblur="changeIcon(${f.id}, this.value)"
-        onkeydown="event.stopPropagation();"
-        onkeypress="event.stopPropagation();event.stopImmediatePropagation();"
-        onkeyup="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
-        onclick="event.stopPropagation()">
+        data-blur="1" data-action="changeIcon" data-args="${dargs([f.id, '@value'])}"
+        data-enter-blur="1">
     </div>`;
 
   const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
   const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
   return `
   <div class="follow-card${isExp?' expanded':''}${f.suspended?' suspended':''}" id="fc-${f.id}"${markBg?` style="background:${markBg}"`:''}
-    onclick="if(!event.target.closest('.fc-detail,.fc-regdate-popup,.fc-del,.fc-cal-btn,.fc-fav-btn,.fc-copy-btn,a,.dp-dur'))toggleExpand(${f.id})"
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
     <div class="fc-row">
       <!-- PCではfc-previewにアイコンを表示、スマホではここに表示 -->
@@ -2744,25 +2746,25 @@ function renderFollowCard(f){
               ? `https://www.youtube.com/playlist?list=${plId}`
               : null;
             return chUrl
-              ? `<a class="fc-name" href="${esc(chUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${chId?'YouTubeチャンネルを開く':'YouTubeプレイリストを開く'}">${esc(f.name)}</a>`
+              ? `<a class="fc-name" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chId?'YouTubeチャンネルを開く':'YouTubeプレイリストを開く'}">${esc(f.name)}</a>`
               : `<span class="fc-name">${esc(f.name)}</span>`;
           })()}
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
-          ${f.tags.map(t=>`<span class="fc-tag" onclick="event.stopPropagation();setTag('${t.replace(/'/g, '&#39;')}')" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
-          ${f.memo ? `<span class="fc-memo-inline">📝 <span onclick="event.stopPropagation()">${linkifyMemo(f.memo)}</span></span>` : ''}
+          ${f.tags.map(t=>`<span class="fc-tag" data-click="1" data-action="setTag" data-args="${dargs([t])}" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
+          ${f.memo ? `<span class="fc-memo-inline">📝 <span>${linkifyMemo(f.memo)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
           ${f.suspended ? '' : `<span class="freq-pill ${pillClass}">${freqLabel(f.freq)}</span>`}
           ${f.fetchTimes && f.fetchTimes.length>0 ? `<span class="sched-pill" title="個別指定: ${esc(f.fetchTimes)}">個別指定</span>` : ''}
           <span class="fc-ago" title="最終確認時刻">${f.lastFetched ? agoText+'取得' : agoText}</span>
-          <button class="fc-fav-btn" data-mark="${f.markColor||''}" onclick="openMarkPopup(event,${f.id})" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
-          <button class="fc-cal-btn" onclick="toggleRegDateInput(event,${f.id})" title="登録日">📅</button>
+          <button class="fc-fav-btn" data-mark="${f.markColor||''}" data-click="1" data-action="openMarkPopup" data-args="${dargs([f.id, '@el'])}" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
+          <button class="fc-cal-btn" data-click="1" data-action="toggleRegDateInput" data-args="[${f.id}]" title="登録日">📅</button>
           ${regDateText ? `<span class="fc-regdate-inline" title="登録日">${regDateText}登録</span>` : ''}
-          <button class="fc-del" onclick="delFollow(event,${f.id})" title="削除">✕</button>
+          <button class="fc-del" data-click="1" data-action="delFollow" data-args="[${f.id}]" title="削除">✕</button>
         </div>
       </div>
     </div>
     ${(f.posts||[]).length > 0 ? `
-    <div class="fc-preview" style="padding:0 8px 2px" onclick="toggleExpand(${f.id})">
+    <div class="fc-preview" style="padding:0 8px 2px">
       ${(f.posts||[]).slice(0,3).map((p, pi)=>{
         const dur = fmtDuration(p.duration);
         const isShort = p.link && p.link.includes('/shorts/');
@@ -2774,7 +2776,7 @@ function renderFollowCard(f){
           || p.link?.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/)?.[1];
         const twPc = pi===0 ? 60 : 30; const thPc = pi===0 ? 34 : 17;
         const thumbHtml = ytVid
-          ? `<a href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="flex-shrink:0">
+          ? `<a href="${esc(p.link)}" target="_blank" rel="noopener" style="flex-shrink:0">
               <img src="https://i.ytimg.com/vi/${ytVid}/default.jpg"
                 loading="lazy" onerror="this.parentElement.style.display='none'"
                 style="width:${twPc}px;height:${thPc}px;object-fit:cover;border-radius:3px;display:block">
@@ -2797,35 +2799,33 @@ function renderFollowCard(f){
             ${dateStr?`<span class="fc-preview-date">${esc(dateStr)}</span>`:''}
             ${durText?`<span class="dp-dur"${durAttr}>${durText}</span>`:''}
           </div>
-          <a class="fc-preview-title" href="${esc(p.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(p.title)}</a>
-          ${(!geminiApiKey||p.duration===-2||p.duration===-3) ? '' : `<button class="fc-copy-btn" style="flex-shrink:0;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;white-space:nowrap;color:var(--pill-summary);background:#0A5C6B22;border:none;border-radius:99px;padding:2px 9px" onclick="event.stopPropagation();openSummaryModal(${f.id}, '${p.link.replace(/'/g,"\\'")}')" title="AIで要約">要約</button>`}
+          <a class="fc-preview-title" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
+          ${(!geminiApiKey||p.duration===-2||p.duration===-3) ? '' : `<button class="fc-copy-btn" style="flex-shrink:0;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;white-space:nowrap;color:var(--pill-summary);background:#0A5C6B22;border:none;border-radius:99px;padding:2px 9px" data-click="1" data-action="openSummaryModal" data-args="${dargs([f.id, p.link])}" title="AIで要約">要約</button>`}
           ${thumbHtml}
           <span class="fc-preview-spacer" style="flex:1"></span>
           ${rightButtons}
         </div>`;
       }).join('')}
     </div>` : ''}
-    <div class="fc-regdate-popup" id="regdate-popup-${f.id}" style="display:none" onclick="event.stopPropagation()">
+    <div class="fc-regdate-popup" id="regdate-popup-${f.id}" style="display:none">
       <span class="fc-freq-label">登録日：</span>
       <input type="date" class="fc-tag-input"
         value="${f.registeredAt ? new Date(f.registeredAt).toISOString().slice(0,10) : ''}"
-        onchange="changeRegDate(${f.id}, this.value)"
+        data-change="1" data-action="changeRegDate" data-args="${dargs([f.id, '@value'])}"
         style="max-width:160px">
-      <button class="fc-copy-btn" onclick="toggleRegDateInput(event,${f.id})">&#x2715;</button>
+      <button class="fc-copy-btn" data-click="1" data-action="toggleRegDateInput" data-args="[${f.id}]">&#x2715;</button>
     </div>
-    <div class="fc-detail" onclick="event.stopPropagation()">
+    <div class="fc-detail">
       ${isExp ? freqSelector : ''}
       ${isExp ? renderDetail(f) : ''}
     </div>
   </div>`;
 }
 
-function openMarkPopup(e, id){
-  e.stopPropagation();
+function openMarkPopup(id, btn){
   // 既存のポップアップを閉じる
   document.querySelectorAll('.mark-popup').forEach(el=>el.remove());
 
-  const btn = e.currentTarget;
   const f = follows.find(x=>x.id===id);
   if(!f) return;
 
@@ -2882,10 +2882,9 @@ function setMark(id, color){
   renderSidebar();
 }
 
-function toggleFavorite(e, id){ openMarkPopup(e, id); } // 後方互換
+function toggleFavorite(id, btn){ openMarkPopup(id, btn); } // 後方互換
 
-function toggleRegDateInput(e, id){
-  e.stopPropagation();
+function toggleRegDateInput(id){
   const popup = document.getElementById(`regdate-popup-${id}`);
   if(!popup) return;
   const isVisible = popup.style.display !== 'none';
@@ -2894,6 +2893,39 @@ function toggleRegDateInput(e, id){
     // 日付入力欄にフォーカス
     popup.querySelector('input[type="date"]')?.focus();
   }
+}
+
+/* renderFollowCardのdata-action用の小さなラッパー群 */
+function toggleSuspend(id){
+  const f = follows.find(x=>x.id===id);
+  if(!f) return;
+  f.suspended = !f.suspended;
+  save();
+  render();
+}
+function enqueueFetchById(id){
+  const f = follows.find(x=>x.id===id);
+  if(f) enqueueFetch(f, false);
+}
+function openLogModalById(id){
+  const f = follows.find(x=>x.id===id);
+  if(f) openLogModal(f);
+}
+function editUrlInline(id){
+  const t = document.getElementById('url-text-'+id);
+  const i = document.getElementById('url-input-'+id);
+  if(t) t.style.display = 'none';
+  if(i){ i.style.display = ''; i.focus(); i.select(); }
+}
+function commitUrlEdit(id, val){
+  const i = document.getElementById('url-input-'+id);
+  const t = document.getElementById('url-text-'+id);
+  if(i) i.style.display = 'none';
+  if(t) t.style.display = '';
+  changeUrl(id, val);
+}
+function selectInputText(el){
+  if(el && el.select) el.select();
 }
 
 function copyText(text, btn){
@@ -4335,8 +4367,7 @@ async function addFollow(){
   enqueueFetch(f);
 }
 
-function delFollow(e, id){
-  e.stopPropagation();
+function delFollow(id){
   if(!confirm('このフォローを削除しますか？')) return;
   follows = follows.filter(f=>f.id!==id);
   if(expanded===id) expanded=null;
@@ -4398,6 +4429,9 @@ function setTag(t){
 }
 function setFreq(f){ activeFreq=f; render(); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// data-args属性用: 配列をJSONにしてHTML属性として安全な形にエスケープする
+// （文字列に引用符や&などが含まれていても安全に埋め込める）
+function dargs(arr){ return esc(JSON.stringify(arr)); }
 
 // アイコン画像のsrcを組み立てる。
 // YouTube/Googleのサムネイル画像はキャッシュ回避用の?vパラメータを付けても問題ないが、
