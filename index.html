@@ -1052,12 +1052,49 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.06</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.09</span>
 </div>
 
 <div id="modalContainer"></div>
 
 <script>
+/* ── イベント委任（将来のChrome拡張機能化を見据えた土台）──
+   Chrome拡張機能（Manifest V3）は既定のCSPでonclick="..."のような
+   インラインイベント属性を許可しない。そのため、HTML文字列に直接
+   onclick等を書く代わりに、data-action（呼び出す関数名）・data-args
+   （JSON配列の引数、要素自身の値を渡したい場合は"@value"と書く）を
+   属性に持たせておき、ここでdocumentに1箇所だけ登録したリスナーが
+   クリック・変更を拾って該当関数を呼び出す方式に段階的に移行する。
+   （既存のonclickを全部一度に置き換えるのはリスクが高いため、
+   まずは「久しぶり」パネル・履歴から対応し、問題なければ範囲を広げる）
+
+   注意点: この仕組みはdocumentに1つだけ登録しているため、
+   要素自身より上の階層で「.onclickプロパティに直接ハンドラを
+   登録している」ような箇所（例: モーダルの背景クリックで閉じる処理）
+   より後に実行される（バブリングでdocumentは最後に発火するため）。
+   祖先要素の.onclickより先に止めたい処理がある場合は、この仕組みを
+   使わず、その要素の生成時に直接addEventListenerする。 */
+function runDelegatedAction(el, evt){
+  const action = el.dataset.action;
+  if(!action) return;
+  const fn = window[action];
+  if(typeof fn !== 'function'){ console.warn('data-actionが未定義:', action); return; }
+  let args = [];
+  if(el.dataset.args){
+    try{ args = JSON.parse(el.dataset.args); }catch(err){ console.warn('data-args解析失敗:', el.dataset.args, err); }
+  }
+  args = args.map(a => a === '@value' ? el.value : a);
+  fn(...args, evt);
+}
+document.addEventListener('click', function(e){
+  const el = e.target.closest('[data-click="1"]');
+  if(el) runDelegatedAction(el, e);
+});
+document.addEventListener('change', function(e){
+  const el = e.target.closest('[data-change="1"]');
+  if(el) runDelegatedAction(el, e);
+});
+
 /* ── CORS proxy options (tried in order) ── */
 const PROXIES = [
   async url => {
@@ -2245,23 +2282,29 @@ function openRevivalHistory(){
     m.id = 'revivalHistModal';
     m.className = 'modal-backdrop';
     m.onclick = (e)=>{ if(e.target===m) m.style.display='none'; };
-    m.innerHTML = `<div class="modal" style="max-width:640px;width:92%;max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    m.innerHTML = `<div class="modal" style="max-width:640px;width:92%;max-height:84vh;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <h2 style="margin:0">🎉 久しぶり更新の履歴</h2>
         <span id="revivalHistTip" title="${revivalTooltipText()}" style="cursor:help;color:var(--text-faint);font-size:13px;border:1px solid var(--border-strong);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
         <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted)">
-          <input type="number" id="revivalThresholdInput" min="1" max="365" value="${revivalThresholdDays}" style="width:52px;padding:2px 4px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px" onchange="setRevivalThreshold(this.value)">
+          <input type="number" id="revivalThresholdInput" min="1" max="365" value="${revivalThresholdDays}" style="width:52px;padding:2px 4px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px" data-change="1" data-action="setRevivalThreshold" data-args='["@value"]'>
           <span>日以上で「久しぶり」</span>
         </div>
-        <button class="btn-cancel" style="margin-left:auto" onclick="clearRevivalHistory()">クリア</button>
-        <button class="btn-cancel" onclick="document.getElementById('revivalHistModal').style.display='none'">閉じる</button>
+        <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="clearRevivalHistory">クリア</button>
+        <button class="btn-cancel" data-click="1" data-action="closeRevivalHistModal">閉じる</button>
       </div>
       <div id="revivalHistBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
     </div>`;
     document.body.appendChild(m);
+    // モーダル内クリックが背景（クリックで閉じる）まで伝播しないようにする
+    m.querySelector('.modal').addEventListener('click', e=>e.stopPropagation());
   }
   m.style.display = 'flex';
   renderRevivalHistory();
+}
+function closeRevivalHistModal(){
+  const m = document.getElementById('revivalHistModal');
+  if(m) m.style.display = 'none';
 }
 function revivalTooltipText(){
   return `新着動画を検知した際、その投稿と直前の投稿の間隔が${revivalThresholdDays}日以上あいていた場合に表示されます`;
@@ -2301,7 +2344,7 @@ function renderRevivalHistory(){
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border);font-size:12px">
       <span class="rv-badge" style="flex-shrink:0">${r.gapDays}日ぶり</span>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
-        <span onclick="openFollowPanel(${r.id})" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
+        <span data-click="1" data-action="openFollowPanel" data-args="[${r.id}]" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
         <a href="${esc(r.link)}" target="_blank" rel="noopener" style="text-decoration:none;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title||'')}</a>
       </div>
       <span style="color:var(--text-faint);flex-shrink:0;font-family:'DM Mono',monospace">${date}</span>
@@ -2327,17 +2370,17 @@ function renderRevivalPanel(){
     return `<div class="rv-item">
       <span class="rv-badge">${r.gapDays}日ぶり</span>
       <div class="rv-link" style="display:flex;flex-direction:column;overflow:hidden">
-        <span class="rv-name" onclick="event.stopPropagation();openFollowPanel(${r.id})" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content">${safeName}</span>
+        <span class="rv-name" data-click="1" data-action="openFollowPanel" data-args="[${r.id}]" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content">${safeName}</span>
         <a class="rv-title" href="${esc(r.link)}" target="_blank" rel="noopener" title="${safeTitle}" style="text-decoration:none;color:inherit">${safeTitle}</a>
       </div>
-      <button class="rv-x" onclick="dismissRevival(${r.id})" title="消す">✕</button>
+      <button class="rv-x" data-click="1" data-action="dismissRevival" data-args="[${r.id}]" title="消す">✕</button>
     </div>`;
   }).join('');
   panel.innerHTML = `<div class="rv-head">
       <span class="rv-title-main">🎉 久しぶりに更新されたチャンネル（${revivals.length}）</span>
       <span id="revivalPanelTip" title="${revivalTooltipText()}" style="cursor:help;color:var(--text-faint);font-size:12px;border:1px solid var(--border-strong);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
-      <button class="rv-clear" onclick="openRevivalHistory()">履歴</button>
-      <button class="rv-clear" onclick="dismissAllRevivals()">すべて消す</button>
+      <button class="rv-clear" data-click="1" data-action="openRevivalHistory">履歴</button>
+      <button class="rv-clear" data-click="1" data-action="dismissAllRevivals">すべて消す</button>
     </div>
     <div class="rv-list">${items}</div>`;
 }
