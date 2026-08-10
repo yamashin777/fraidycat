@@ -1,3 +1,18 @@
+/* ── chrome.storage.local へのミラー書き込み（Chrome拡張機能のバックグラウンド対応の土台）──
+   Service Worker（background.js）はdocument/localStorageに一切アクセスできないため、
+   バックグラウンドで自動更新を行うには、フォローデータや設定をService Worker側からも
+   参照できる場所（chrome.storage.local）に置いておく必要がある。
+   このアプリ自体（ページ側）は今まで通りlocalStorageを正として同期的に読み書きし続け、
+   挙動は一切変えない。ここではlocalStorageへの書き込みと同時に、
+   chrome拡張機能内で実行されている場合に限り、chrome.storage.localにも
+   同じ内容を書き込んでおく（Web版ではchrome.storageが存在しないため何もしない）。
+   読み込み（バックグラウンドで取得された新着データの反映）は次のステップで対応する。 */
+const hasChromeStorage = typeof chrome !== 'undefined' && !!(chrome.storage && chrome.storage.local);
+function mirrorToChromeStorage(obj){
+  if(!hasChromeStorage) return;
+  try{ chrome.storage.local.set(obj).catch(()=>{}); }catch(e){}
+}
+
 /* ── イベント委任（将来のChrome拡張機能化を見据えた土台）──
    Chrome拡張機能（Manifest V3）は既定のCSPでonclick="..."のような
    インラインイベント属性を許可しない。そのため、HTML文字列に直接
@@ -253,6 +268,10 @@ function saveGhSettings(token, repo, path, enabled){
   localStorage.setItem('fraidycat_gh_repo',   repo);
   localStorage.setItem('fraidycat_gh_path',   path);
   localStorage.setItem('fraidycat_gh_sync',   enabled ? 'true' : 'false');
+  mirrorToChromeStorage({
+    fraidycat_gh_token: token, fraidycat_gh_repo: repo,
+    fraidycat_gh_path: path, fraidycat_gh_sync: enabled
+  });
 }
 
 /* GitHubからデータを読み込む */
@@ -292,6 +311,7 @@ async function loadFromGitHub(){
     if(tagOrderData && tagOrderData.length > 0){
       tagOrder = tagOrderData;
       localStorage.setItem('fraidycat_tag_order', JSON.stringify(tagOrder));
+      mirrorToChromeStorage({ fraidycat_tag_order: tagOrder });
       console.log('tagOrder set to:', tagOrder.length, tagOrder.slice(0,3));
     }
     follows = followsData.map(f=>({
@@ -317,12 +337,12 @@ async function loadFromGitHub(){
         dedup.push(r);
       }
       revivalHistory = dedup.slice(0, REVIVAL_HISTORY_MAX);
-      try{ localStorage.setItem('fraidycat_revival_history', JSON.stringify(revivalHistory)); }catch(e){}
+      try{ localStorage.setItem('fraidycat_revival_history', JSON.stringify(revivalHistory)); mirrorToChromeStorage({ fraidycat_revival_history: revivalHistory }); }catch(e){}
     }
     // 久しぶり判定日数はGitHub側を優先し、他端末で設定した値に揃える
     if(decoded.revivalThresholdDays){
       revivalThresholdDays = decoded.revivalThresholdDays;
-      try{ localStorage.setItem('fraidycat_revival_threshold_days', String(revivalThresholdDays)); }catch(e){}
+      try{ localStorage.setItem('fraidycat_revival_threshold_days', String(revivalThresholdDays)); mirrorToChromeStorage({ fraidycat_revival_threshold_days: revivalThresholdDays }); }catch(e){}
     }
 
     save(false); // localStorageにも保存（GitHub同期はしない）
@@ -595,6 +615,8 @@ function save(syncToGh=true){
     localStorage.setItem('fraidycat_follows', JSON.stringify(data));
     // タグ順序もlocalStorageに保存
     localStorage.setItem('fraidycat_tag_order', JSON.stringify(tagOrder));
+    // Service Worker（バックグラウンド更新）がチャンネル一覧・設定を参照できるようミラー
+    mirrorToChromeStorage({ fraidycat_follows: data, fraidycat_tag_order: tagOrder });
     if(syncToGh) scheduleSaveToGitHub();
   }catch(e){}
 }
@@ -1253,7 +1275,7 @@ function markRevival(f, gapDays, post){
   if(!revivalHistory.some(r=>r.link === post.link)){
     revivalHistory.unshift({id:f.id, name:f.name, gapDays, title:post.title, link:post.link, at:Date.now()});
     if(revivalHistory.length > REVIVAL_HISTORY_MAX) revivalHistory = revivalHistory.slice(0, REVIVAL_HISTORY_MAX);
-    try{ localStorage.setItem('fraidycat_revival_history', JSON.stringify(revivalHistory)); }catch(e){}
+    try{ localStorage.setItem('fraidycat_revival_history', JSON.stringify(revivalHistory)); mirrorToChromeStorage({ fraidycat_revival_history: revivalHistory }); }catch(e){}
   }
 }
 
@@ -1313,7 +1335,7 @@ function setRevivalThreshold(v){
     return;
   }
   revivalThresholdDays = n;
-  try{ localStorage.setItem('fraidycat_revival_threshold_days', String(n)); }catch(e){}
+  try{ localStorage.setItem('fraidycat_revival_threshold_days', String(n)); mirrorToChromeStorage({ fraidycat_revival_threshold_days: n }); }catch(e){}
   if(input) input.value = n;
   const tip = document.getElementById('revivalHistTip');
   if(tip) tip.title = revivalTooltipText();
@@ -1323,7 +1345,7 @@ function setRevivalThreshold(v){
 }
 function clearRevivalHistory(){
   revivalHistory = [];
-  try{ localStorage.removeItem('fraidycat_revival_history'); }catch(e){}
+  try{ localStorage.removeItem('fraidycat_revival_history'); mirrorToChromeStorage({ fraidycat_revival_history: [] }); }catch(e){}
   renderRevivalHistory();
 }
 function renderRevivalHistory(){
@@ -2559,6 +2581,7 @@ function saveApiKey(){
   const key = document.getElementById('apiKeyInput').value.trim();
   ytApiKey = key;
   localStorage.setItem('fraidycat_yt_api_key', key);
+  mirrorToChromeStorage({ fraidycat_yt_api_key: key });
   closeApiKeyModal();
   setStatus('ok', 'APIキーを保存しました');
 }
@@ -2589,6 +2612,7 @@ function saveSummaryApiKey(){
   const key = document.getElementById('summaryApiKeyInput').value.trim();
   geminiApiKey = key;
   localStorage.setItem('fraidycat_gemini_api_key', key);
+  mirrorToChromeStorage({ fraidycat_gemini_api_key: key });
   closeSummaryApiKeyModal();
   setStatus('ok', '要約APIキーを保存しました');
 }
@@ -2854,6 +2878,7 @@ function renderTags(){
 // タグの並び順をlocalStorageで管理
 function saveTagOrder(){
   localStorage.setItem('fraidycat_tag_order', JSON.stringify(tagOrder));
+  mirrorToChromeStorage({ fraidycat_tag_order: tagOrder });
 }
 
 function getSortedTags(){
@@ -4286,6 +4311,23 @@ setInterval(()=>{
 
 }, 60000); // 1分ごと
 load(); // まずlocalStorageから読み込む
+// 拡張機能内で実行されている場合、起動時点の状態を一通りchrome.storage.localにも
+// ミラーしておく（Service Workerがまだ一度もsave()を経由していない状態でも
+// フォロー一覧・設定を参照できるようにするため）。
+if(hasChromeStorage){
+  mirrorToChromeStorage({
+    fraidycat_follows: JSON.parse(localStorage.getItem('fraidycat_follows') || '[]'),
+    fraidycat_tag_order: tagOrder,
+    fraidycat_yt_api_key: ytApiKey,
+    fraidycat_gemini_api_key: geminiApiKey,
+    fraidycat_revival_threshold_days: revivalThresholdDays,
+    fraidycat_revival_history: revivalHistory,
+    fraidycat_gh_token: ghToken,
+    fraidycat_gh_repo: ghRepo,
+    fraidycat_gh_path: ghPath,
+    fraidycat_gh_sync: ghSyncEnabled,
+  });
+}
 searchQuery = '';
 render();
 setStatus('idle','準備完了');

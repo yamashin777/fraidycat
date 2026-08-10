@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Fraidycat",
-  "version": "1.0.0",
+  "name": "Fraidycat Clone",
+  "version": "1.1.0",
   "description": "YouTube・RSSフィードをまとめてチェックできるフィードリーダー",
   "action": {
-    "default_title": "Fraidycatを開く",
+    "default_title": "Fraidycat Cloneを開く",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -20,5 +20,8 @@
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "permissions": [
+    "storage"
+  ]
 }
