@@ -914,6 +914,8 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .ip-empty{padding:1rem;text-align:center;color:var(--text-faint);font-size:12px}
 .import-summary{font-size:12px;color:var(--text-muted);margin-top:6px}
 .import-summary b{color:var(--accent-mid)}
+.tag-suggest-item{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:0.5px solid var(--border)}
+.tag-suggest-item:hover{background:var(--tag-bg)}
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
@@ -1050,7 +1052,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.13</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.14</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -1072,14 +1074,19 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
    より後に実行される（バブリングでdocumentは最後に発火するため）。
    祖先要素の.onclickより先に止めたい処理がある場合は、この仕組みを
    使わず、その要素の生成時に直接addEventListenerする。 */
-function runDelegatedAction(el, evt){
-  const action = el.dataset.action;
+// kindを指定すると、まずdata-action-{kind}/data-args-{kind}（例: data-action-focus）を
+// 優先的に探す。1つの要素に「入力のたびに」「フォーカス時」「フォーカスが外れた時」など
+// 複数の異なる動作を紐付けたい場合（例: タグ入力欄）に使う。指定がない・見つからない場合は
+// 通常のdata-action/data-argsにフォールバックする。
+function runDelegatedAction(el, evt, kind){
+  const action = (kind && el.dataset['action'+kind]) || el.dataset.action;
   if(!action) return;
   const fn = window[action];
   if(typeof fn !== 'function'){ console.warn('data-actionが未定義:', action); return; }
+  const argsAttr = (kind && el.dataset['args'+kind]) || el.dataset.args;
   let args = [];
-  if(el.dataset.args){
-    try{ args = JSON.parse(el.dataset.args); }catch(err){ console.warn('data-args解析失敗:', el.dataset.args, err); }
+  if(argsAttr){
+    try{ args = JSON.parse(argsAttr); }catch(err){ console.warn('data-args解析失敗:', argsAttr, err); }
   }
   // イベントオブジェクト自体が必要な場合のみ、明示的に"@evt"を書いた箇所に渡す
   // （以前は常に引数の末尾にevtを自動付加していたが、openLogModal(f)のように
@@ -1121,7 +1128,12 @@ document.addEventListener('input', function(e){
 // blurはバブリングしないため、代わりにバブリングするfocusoutで拾う
 document.addEventListener('focusout', function(e){
   const el = e.target.closest('[data-blur="1"]');
-  if(el) runDelegatedAction(el, e);
+  if(el) runDelegatedAction(el, e, 'Blur');
+});
+// focusも同様にバブリングしないため、代わりにバブリングするfocusinで拾う
+document.addEventListener('focusin', function(e){
+  const el = e.target.closest('[data-focus="1"]');
+  if(el) runDelegatedAction(el, e, 'Focus');
 });
 // テキスト入力欄でEnterを押したらフォーカスを外す（＝data-blurの確定処理を発火させる）
 document.addEventListener('keyup', function(e){
@@ -1451,8 +1463,8 @@ async function saveToGitHub(retryCount){
 /* GitHub設定モーダル */
 function openGhSettingsModal(){
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="document.getElementById('modalContainer').innerHTML=''">
-    <div class="modal" onclick="event.stopPropagation()" style="max-width:480px">
+  <div class="modal-backdrop" data-click="1" data-action="closeModalContainerIfBackdrop" data-args='["@el","@evt"]'>
+    <div class="modal" style="max-width:480px">
       <h2>GitHub同期設定</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem;line-height:1.6">
         複数端末でデータを自動同期します。<br>
@@ -1478,8 +1490,8 @@ function openGhSettingsModal(){
         <label for="gh-enabled" style="font-size:13px;cursor:pointer">同期を有効にする</label>
       </div>
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">キャンセル</button>
-        <button class="btn-ok" onclick="applyGhSettings()">保存して同期テスト</button>
+        <button class="btn-cancel" data-click="1" data-action="closeModalContainer">キャンセル</button>
+        <button class="btn-ok" data-click="1" data-action="applyGhSettings">保存して同期テスト</button>
       </div>
     </div>
   </div>`;
@@ -2006,19 +2018,13 @@ function showTagSuggestions(val){
     const show = current ? matched : allTags;
     if(!show.length){ box.style.display='none'; return; }
     box.innerHTML = show.map(t=>
-      `<div onclick="selectTag('${esc(t)}')"
-        style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:0.5px solid var(--border)"
-        onmouseenter="this.style.background='var(--tag-bg)'"
-        onmouseleave="this.style.background=''">${esc(t)}</div>`
+      `<div class="tag-suggest-item" data-click="1" data-action="selectTag" data-args="${dargs([t])}">${esc(t)}</div>`
     ).join('');
     box.style.display = 'block';
     return;
   }
   box.innerHTML = matched.map(t=>
-    `<div onclick="selectTag('${esc(t)}')"
-      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:0.5px solid var(--border)"
-      onmouseenter="this.style.background='var(--tag-bg)'"
-      onmouseleave="this.style.background=''">${esc(t)}</div>`
+    `<div class="tag-suggest-item" data-click="1" data-action="selectTag" data-args="${dargs([t])}">${esc(t)}</div>`
   ).join('');
   box.style.display = 'block';
 }
@@ -2921,6 +2927,10 @@ function enqueueFetchById(id){
   const f = follows.find(x=>x.id===id);
   if(f) enqueueFetch(f, false);
 }
+function retryFetchById(id){
+  const f = follows.find(x=>x.id===id);
+  if(f) fetchFollow(f);
+}
 function openLogModalById(id){
   const f = follows.find(x=>x.id===id);
   if(f) openLogModal(f);
@@ -2960,6 +2970,40 @@ function openModalMobile(){ openModal(); closeDrawer(); }
 function refreshAllMobile(){ refreshAll(); closeDrawer(); }
 function openLogModalMobile(){ openLogModal(); closeDrawer(); }
 function openRevivalHistoryMobile(){ openRevivalHistory(); closeDrawer(); }
+// #modalContainerに描画する系のモーダル共通のクローズ処理。
+// 背景（バックドロップ）自体をクリックした時だけ閉じる（中身のクリックでは閉じない）。
+// 以前はモーダルカード側にevent.stopPropagation()を付けて防いでいたが、
+// それだと委任リスナー（documentに1つだけ登録）までイベントが届かなくなり
+// モーダル内のボタンが反応しなくなる不具合の元になるため、
+// 代わりに「クリックされた要素がバックドロップ自身かどうか」で判定する。
+function closeModalContainerIfBackdrop(el, evt){
+  if(evt.target === el) document.getElementById('modalContainer').innerHTML = '';
+}
+function closeModalContainer(){
+  document.getElementById('modalContainer').innerHTML = '';
+}
+// 個別の閉じる関数（closeApiKeyModal等）を持つモーダル用の汎用「背景クリックで閉じる」ラッパー
+function closeIfBackdrop(el, evt, closeFnName){
+  if(evt.target === el){
+    const fn = window[closeFnName];
+    if(typeof fn === 'function') fn();
+  }
+}
+
+/* ── フォロー追加モーダル（renderModal）のフォーム入力用ラッパー ── */
+function handleUrlInput(val){
+  formData.url = val;
+  clearTimeout(window._urlTimer);
+  window._urlTimer = setTimeout(()=>autoFetchTitle(val.trim()), 800);
+}
+function handleNameInput(val){ formData.name = val; }
+function handleFreqSelect(val){ formData.freq = val; }
+function handleTagsInput(val){ formData.tags = val; showTagSuggestions(val); }
+function handleTagsBlur(){ setTimeout(()=>hideTagSuggestions(), 200); }
+function handleMemoInput(val){ formData.memo = val; }
+function handleImportTextInput(val){ importText = val; renderImportModal(); }
+function selectBulkFreq(fr){ bulkFreqSelected = fr; renderBulkFreqModal(); }
+function selectBulkTag(t){ bulkTagSelected = t; renderBulkFreqModal(); }
 function openGhSettingsModalMobile(){ openGhSettingsModal(); closeDrawer(); }
 function openApiKeyModalMobile(){ openApiKeyModal(); closeDrawer(); }
 function bulkFetchDurationsMobile(){ bulkFetchDurations(); closeDrawer(); }
@@ -3018,7 +3062,7 @@ function changeMemo(id, val){
   // カード上のメモインライン表示を更新
   const memoEl = document.querySelector(`#fc-${id} .fc-memo-inline`);
   if(memoEl){
-    if(f.memo){ memoEl.innerHTML = '📝 <span onclick="event.stopPropagation()">' + linkifyMemo(f.memo) + '</span>'; memoEl.style.display=''; }
+    if(f.memo){ memoEl.innerHTML = '📝 <span>' + linkifyMemo(f.memo) + '</span>'; memoEl.style.display=''; }
     else memoEl.style.display='none';
   }
 }
@@ -3343,14 +3387,13 @@ function renderDetail(f){
     <input type="text" class="dp-schedule-input" id="sched-${f.id}"
       value="${esc(f.fetchTimes || '')}"
       placeholder="例: 8:00,20:00"
-      onclick="event.stopPropagation()"
-      onchange="setFetchTimes(${f.id}, this.value)">
+      data-change="1" data-action="setFetchTimes" data-args="${dargs([f.id, '@value'])}">
     ${nextFtStr ? `<span class="dp-schedule-next">時刻指定: ${nextFtStr}</span>` : ''}
     ${freqNextStr ? `<span class="dp-schedule-next" style="background:var(--surface)">頻度(${esc(freqLabel(f.freq))})次回: ${freqNextStr}</span>` : ''}
     <div class="dp-schedule-desc">毎日この時刻に自動取得（空欄で従来通り）。頻度タグでも定期取得されます。</div>
   </div>`;
   if(f.loading) return scheduleUI + '<div class="dp-empty">読み込み中...</div>';
-  if(f.error) return scheduleUI + `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" onclick="fetchFollow(follows.find(x=>x.id===${f.id}))">再試行</button>`;
+  if(f.error) return scheduleUI + `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" data-click="1" data-action="retryFetchById" data-args="[${f.id}]">再試行</button>`;
   if(!f.posts || f.posts.length===0) return scheduleUI + '<div class="dp-empty">記事が見つかりませんでした</div>';
   return scheduleUI + `<ul class="detail-posts">
     ${f.posts.map(p=>{
@@ -3541,8 +3584,8 @@ async function bulkFetchDurations(){
 /* APIキー設定モーダル */
 function openApiKeyModal(){
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="closeApiKeyModal()">
-    <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal-backdrop" data-click="1" data-action="closeIfBackdrop" data-args='["@el","@evt","closeApiKeyModal"]'>
+    <div class="modal">
       <h2>YouTube APIキー設定</h2>
       <div class="form-row">
         <label class="form-label">APIキー</label>
@@ -3554,8 +3597,8 @@ function openApiKeyModal(){
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeApiKeyModal()">キャンセル</button>
-        <button class="btn-ok" onclick="saveApiKey()">保存</button>
+        <button class="btn-cancel" data-click="1" data-action="closeApiKeyModal">キャンセル</button>
+        <button class="btn-ok" data-click="1" data-action="saveApiKey">保存</button>
       </div>
     </div>
   </div>`;
@@ -3572,8 +3615,8 @@ function saveApiKey(){
 /* ── 動画要約（Google Gemini API・無料枠あり）── */
 function openSummaryApiKeyModal(){
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="closeSummaryApiKeyModal()">
-    <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal-backdrop" data-click="1" data-action="closeIfBackdrop" data-args='["@el","@evt","closeSummaryApiKeyModal"]'>
+    <div class="modal">
       <h2>要約APIキー設定</h2>
       <div class="form-row">
         <label class="form-label">Google Gemini APIキー</label>
@@ -3584,8 +3627,8 @@ function openSummaryApiKeyModal(){
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeSummaryApiKeyModal()">キャンセル</button>
-        <button class="btn-ok" onclick="saveSummaryApiKey()">保存</button>
+        <button class="btn-cancel" data-click="1" data-action="closeSummaryApiKeyModal">キャンセル</button>
+        <button class="btn-ok" data-click="1" data-action="saveSummaryApiKey">保存</button>
       </div>
     </div>
   </div>`;
@@ -3614,10 +3657,10 @@ function openSummaryModal(fid, link){
     document.body.appendChild(m);
   }
   m.style.display = 'flex';
-  m.innerHTML = `<div class="modal" style="max-width:560px;width:92%;max-height:80vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+  m.innerHTML = `<div class="modal" style="max-width:560px;width:92%;max-height:80vh;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <h2 style="margin:0;font-size:16px">📝 要約</h2>
-      <button class="btn-cancel" style="margin-left:auto" onclick="closeSummaryModal()">閉じる</button>
+      <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="closeSummaryModal">閉じる</button>
     </div>
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.5">${esc(p.title)}</div>
     <div id="summaryBody" style="overflow-y:auto;flex:1;font-size:13px;line-height:1.7;white-space:pre-wrap">要約を生成中…</div>
@@ -3712,7 +3755,7 @@ function linkifyMemo(text){
   if(!text) return '';
   const escaped = esc(text);
   return escaped.replace(/(https?:\/\/[^\s<>"]+)/g,
-    '<a href="$1" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:underline">$1</a>'
+    '<a href="$1" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline">$1</a>'
   );
 }
 
@@ -3853,7 +3896,7 @@ function renderTags(){
   mobileBar.innerHTML = allTagsList.map(t=>
     `<button class="tag-btn${activeTag===t?' active':''}"
       style="white-space:nowrap;font-size:12px;padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:${activeTag===t?'var(--accent)':'transparent'};color:${activeTag===t?'#fff':'var(--text-muted)'};cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;"
-      onclick="setTag('${t.replace(/'/g, '&#39;')}')">${t}</button>`
+      data-click="1" data-action="setTag" data-args="${dargs([t])}">${t}</button>`
   ).join('');
 }
 
@@ -3884,13 +3927,13 @@ function renderSidebar(){
   FREQS.forEach(fr=>{
     const cnt = freqCounts[fr] || 0;
     if(!cnt) return;
-    html += `<button class="sb-btn${activeFreq===fr?' active':''}" onclick="setFreq('${fr}')">
+    html += `<button class="sb-btn${activeFreq===fr?' active':''}" data-click="1" data-action="setFreq" data-args="${dargs([fr])}">
       <div class="sb-dot"></div>${freqLabel(fr)}
       <span class="sb-count">${cnt}</span>
     </button>`;
   });
   if(activeFreq){
-    html += `<button class="sb-btn" onclick="setFreq(null)">
+    html += `<button class="sb-btn" data-click="1" data-action="setFreq" data-args="${dargs([null])}">
       <div class="sb-dot"></div>すべて
     </button>`;
   }
@@ -3899,7 +3942,7 @@ function renderSidebar(){
   const scheduledCount = follows.filter(f=>f.fetchTimes && f.fetchTimes.length>0).length;
   if(scheduledCount > 0){
     html += `<div class="sb-divider"></div>`;
-    html += `<button class="sb-btn sb-btn-special${activeTag==='__scheduled__'?' active':''}" onclick="setTag('__scheduled__')">
+    html += `<button class="sb-btn sb-btn-special${activeTag==='__scheduled__'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['__scheduled__'])}">
       <div class="sb-dot" style="background:var(--accent-mid)"></div>個別指定
       <span class="sb-count">${scheduledCount}</span>
     </button>`;
@@ -3909,13 +3952,13 @@ function renderSidebar(){
   if(favoriteCount > 0 || suspendedCount > 0){
     html += `<div class="sb-section" style="margin-top:0.5rem">状態</div>`;
     if(favoriteCount > 0){
-      html += `<button class="sb-btn${activeTag==='__favorite__'?' active':''}" onclick="setTag('__favorite__')">
+      html += `<button class="sb-btn${activeTag==='__favorite__'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['__favorite__'])}">
         <div class="sb-dot" style="background:linear-gradient(135deg,#E00 25%,#07C 25%,#07C 50%,#080 50%,#080 75%,#E6B800 75%)"></div>マーク済み
         <span class="sb-count">${favoriteCount}</span>
       </button>`;
     }
     if(suspendedCount > 0){
-      html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" onclick="setTag('__suspended__')">
+      html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['__suspended__'])}">
         <div class="sb-dot" style="background:#999"></div>更新外
         <span class="sb-count">${suspendedCount}</span>
       </button>`;
@@ -3929,7 +3972,7 @@ function renderSidebar(){
       <span>タグ</span>
       <span style="font-size:10px;color:var(--text-faint)">ドラッグで並び替え</span>
     </div>`;
-    html += `<button class="sb-btn${activeTag==='すべて'?' active':''}" onclick="setTag('すべて')">
+    html += `<button class="sb-btn${activeTag==='すべて'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['すべて'])}">
       <div class="sb-dot"></div>すべて
       <span class="sb-count">${follows.length}</span>
     </button>`;
@@ -3939,7 +3982,7 @@ function renderSidebar(){
       html += `<button class="sb-btn sb-tag-draggable${activeTag===t?' active':''}"
         data-tag="${esc(t)}"
         draggable="true"
-        onclick="setTag('${t.replace(/'/g,"\\'")}')">
+        data-click="1" data-action="setTag" data-args="${dargs([t])}">
         <div class="sb-drag-handle" title="ドラッグして並び替え">⠿</div>
         ${esc(t)}
         <span class="sb-count">${cnt}</span>
@@ -4258,34 +4301,34 @@ function renderModal(){
   if(!showModal){document.getElementById('modalContainer').innerHTML='';return;}
 
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="closeModal()">
-    <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal-backdrop" data-click="1" data-action="closeIfBackdrop" data-args='["@el","@evt","closeModal"]'>
+    <div class="modal">
       <h2>フォローを追加</h2>
       <div class="form-row">
         <label class="form-label">RSS / Atom フィード URL</label>
         <input class="form-input" id="f-url" type="url" value="${esc(formData.url)}"
-          oninput="formData.url=this.value;clearTimeout(window._urlTimer);window._urlTimer=setTimeout(()=>autoFetchTitle(this.value.trim()),800)"
+          data-input="1" data-action="handleUrlInput" data-args='["@value"]'
           placeholder="https://example.com/feed">
         <div class="form-hint" id="f-url-status" style="min-height:16px">URLを入力すると名前を自動取得します</div>
       </div>
       <div class="form-row">
         <label class="form-label">名前</label>
         <input class="form-input" id="f-name" type="text" value="${esc(formData.name)}"
-          oninput="formData.name=this.value" placeholder="URLを入力後に自動入力されます">
+          data-input="1" data-action="handleNameInput" data-args='["@value"]' placeholder="URLを入力後に自動入力されます">
       </div>
 
       <div class="form-row">
         <label class="form-label">チェック頻度</label>
-        <select class="form-select" id="f-freq" onchange="formData.freq=this.value">
+        <select class="form-select" id="f-freq" data-change="1" data-action="handleFreqSelect" data-args='["@value"]'>
           ${FREQS.map(f=>`<option${f===formData.freq?' selected':''}>${f}</option>`).join('')}
         </select>
       </div>
       <div class="form-row">
         <label class="form-label">タグ</label>
         <input class="form-input" id="f-tags" type="text" value="${esc(formData.tags)}"
-          oninput="formData.tags=this.value;showTagSuggestions(this.value)"
-          onfocus="showTagSuggestions(this.value)"
-          onblur="setTimeout(()=>hideTagSuggestions(),200)"
+          data-input="1" data-action="handleTagsInput" data-args='["@value"]'
+          data-focus="1" data-action-focus="showTagSuggestions" data-args-focus='["@value"]'
+          data-blur="1" data-action-blur="handleTagsBlur"
           placeholder="例: tech, news（スペース・カンマ区切り）"
           autocomplete="off">
         <div id="tag-suggestions" style="display:none;position:absolute;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.12);max-height:160px;overflow-y:auto;width:100%"></div>
@@ -4293,13 +4336,13 @@ function renderModal(){
       <div class="form-row">
         <label class="form-label">メモ（任意）</label>
         <textarea class="form-input" id="f-memo" rows="1"
-          oninput="formData.memo=this.value"
+          data-input="1" data-action="handleMemoInput" data-args='["@value"]'
           placeholder="このチャンネルに関するメモや備考..."
           style="resize:none;line-height:1.5">${esc(formData.memo)}</textarea>
       </div>
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
-        <button class="btn-ok" onclick="addFollow()">追加して取得</button>
+        <button class="btn-cancel" data-click="1" data-action="closeModal">キャンセル</button>
+        <button class="btn-ok" data-click="1" data-action="addFollow">追加して取得</button>
       </div>
     </div>
   </div>`;
@@ -4546,14 +4589,14 @@ function renderImportModal(){
     : '';
 
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="closeImportModal()">
-    <div class="modal" style="width:520px" onclick="event.stopPropagation()">
+  <div class="modal-backdrop" data-click="1" data-action="closeIfBackdrop" data-args='["@el","@evt","closeImportModal"]'>
+    <div class="modal" style="width:520px">
       <h2>一括インポート</h2>
       <div class="form-row">
         <label class="form-label">テキストを貼り付け</label>
         <textarea class="import-textarea" id="import-ta"
           placeholder="#タグ名&#10;https://... チャンネル名&#10;https://... チャンネル名&#10;&#10;#別のタグ&#10;https://..."
-          oninput="importText=this.value;renderImportModal()">${esc(importText)}</textarea>
+          data-input="1" data-action="handleImportTextInput" data-args='["@value"]'>${esc(importText)}</textarea>
         <div class="form-hint">
           # から始まる行はタグ、URLの後ろにチャンネル名を書く形式に対応しています
         </div>
@@ -4561,8 +4604,8 @@ function renderImportModal(){
       <div class="import-preview">${previewHtml}</div>
       ${summaryHtml}
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeImportModal()">キャンセル</button>
-        <button class="btn-ok" ${newItems.length===0?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="execImport()">
+        <button class="btn-cancel" data-click="1" data-action="closeImportModal">キャンセル</button>
+        <button class="btn-ok" ${newItems.length===0?'disabled style="opacity:0.4;cursor:not-allowed"':''} data-click="1" data-action="execImport">
           ${newItems.length} 件を登録
         </button>
       </div>
@@ -4776,7 +4819,7 @@ function renderBulkFreqModal(){
 
   const freqOptions = FREQS.map(fr => `
     <div class="freq-option${fr === bulkFreqSelected ? ' selected' : ''}"
-         onclick="bulkFreqSelected='${fr}';renderBulkFreqModal()">
+         data-click="1" data-action="selectBulkFreq" data-args="${dargs([fr])}">
       <div>
         <div class="freq-option-label">${freqLabel(fr)}</div>
         <div class="freq-option-desc">${FREQ_DESC[fr]}</div>
@@ -4786,15 +4829,15 @@ function renderBulkFreqModal(){
 
   const tagBtns = [
     `<button class="bulk-tag-btn${bulkTagSelected===null?' selected':''}"
-       onclick="bulkTagSelected=null;renderBulkFreqModal()">すべて</button>`,
+       data-click="1" data-action="selectBulkTag" data-args="${dargs([null])}">すべて</button>`,
     ...allTags.map(t =>
       `<button class="bulk-tag-btn${bulkTagSelected===t?' selected':''}"
-         onclick="bulkTagSelected='${t}';renderBulkFreqModal()">${t}</button>`)
+         data-click="1" data-action="selectBulkTag" data-args="${dargs([t])}">${t}</button>`)
   ].join('');
 
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="closeBulkFreqModal()">
-    <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal-backdrop" data-click="1" data-action="closeIfBackdrop" data-args='["@el","@evt","closeBulkFreqModal"]'>
+    <div class="modal">
       <h2>頻度を一括変更</h2>
       <div class="form-row">
         <label class="form-label">変更後の頻度</label>
@@ -4808,8 +4851,8 @@ function renderBulkFreqModal(){
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeBulkFreqModal()">キャンセル</button>
-        <button class="btn-ok" onclick="execBulkFreq()">
+        <button class="btn-cancel" data-click="1" data-action="closeBulkFreqModal">キャンセル</button>
+        <button class="btn-ok" data-click="1" data-action="execBulkFreq">
           ${count}件に適用
         </button>
       </div>
@@ -4935,7 +4978,7 @@ function renderDuplicateModal(){
             <div class="dup-url">${esc(f.url)}</div>
           </div>
           <button class="${isKeep?'dup-keep selected':'dup-keep'}"
-            onclick="setDupKeep(${gi},${f.id})">残す</button>
+            data-click="1" data-action="setDupKeep" data-args="${dargs([gi, f.id])}">残す</button>
         </div>`;
       });
       content += `</div>`;
@@ -4945,16 +4988,16 @@ function renderDuplicateModal(){
   const deleteCount = dupGroups.reduce((sum, g) => sum + g.length - 1, 0);
 
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="closeDuplicateModal()">
-    <div class="modal" style="width:500px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
+  <div class="modal-backdrop" data-click="1" data-action="closeIfBackdrop" data-args='["@el","@evt","closeDuplicateModal"]'>
+    <div class="modal" style="width:500px;max-height:80vh;overflow-y:auto">
       <h2>重複チャンネルの検出・統合</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
         「残す」を選んだチャンネルを残し、それ以外を削除します。
       </div>
       ${content}
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeDuplicateModal()">キャンセル</button>
-        ${dupGroups.length > 0 ? `<button class="btn-ok" onclick="execMerge()">
+        <button class="btn-cancel" data-click="1" data-action="closeDuplicateModal">キャンセル</button>
+        ${dupGroups.length > 0 ? `<button class="btn-ok" data-click="1" data-action="execMerge">
           ${deleteCount}件を削除して統合
         </button>` : ''}
       </div>
@@ -5020,14 +5063,14 @@ function showExportModal(json){
   const url = URL.createObjectURL(blob);
   const fname = `fraidycat_${new Date().toISOString().slice(0,10)}.json`;
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="if(event.target===this){this.innerHTML='';document.getElementById('modalContainer').innerHTML=''}">
-    <div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
+  <div class="modal-backdrop" data-click="1" data-action="closeModalContainerIfBackdrop" data-args='["@el","@evt"]'>
+    <div class="modal" style="max-width:560px">
       <h2>JSONエクスポート（${follows.length}件）</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
         下のボタンでコピーするか、リンクを長押し→「リンク先のファイルをダウンロード」で保存できます。
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <button class="btn-ok" onclick="copyExportJson(this)">クリップボードにコピー</button>
+        <button class="btn-ok" data-click="1" data-action="copyExportJson" data-args='["@el"]'>クリップボードにコピー</button>
         <a class="btn-ok" href="${url}" download="${fname}"
            style="text-decoration:none;display:inline-flex;align-items:center"
            target="_blank" rel="noopener">ファイルとして開く</a>
@@ -5036,9 +5079,9 @@ function showExportModal(json){
         style="width:100%;height:240px;font-family:'DM Mono',monospace;font-size:11px;
         border:1px solid var(--border-strong);border-radius:8px;padding:8px;
         background:var(--bg);color:var(--text);resize:vertical;-webkit-user-select:all;user-select:all"
-        onclick="this.select()">${esc(json)}</textarea>
+        data-click="1" data-action="selectInputText" data-args='["@el"]'>${esc(json)}</textarea>
       <div class="modal-actions">
-        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">閉じる</button>
+        <button class="btn-cancel" data-click="1" data-action="closeModalContainer">閉じる</button>
       </div>
     </div>
   </div>`;
@@ -5103,52 +5146,11 @@ setInterval(()=>{
 function showErrorList(){
   const errs = follows.filter(f=>f.error);
   if(!errs.length) return;
-  document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="document.getElementById('modalContainer').innerHTML=''">
-    <div class="modal" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
-      <h2>取得エラー（${errs.length}件）</h2>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
-        「更新外」にするとチャンネルを残したまま自動更新をスキップします
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${errs.map(f=>`
-          <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-              <span style="font-size:13px;font-weight:500">${esc(f.name)}</span>
-              <button class="btn-cancel" style="margin-left:auto;font-size:11px;padding:2px 8px"
-                onclick="clearErrorAndRetry(${f.id})">
-                再試行
-              </button>
-              <button class="btn-cancel" style="font-size:11px;padding:2px 8px;color:var(--accent-mid);border-color:var(--accent-mid)"
-                onclick="suspendFollow(${f.id})">
-                更新外にする
-              </button>
-            </div>
-            <div style="font-size:11px;color:var(--danger);font-family:var(--font-mono,monospace)">${esc(f.error||'')}</div>
-            <div style="font-size:10px;color:var(--text-faint);margin-top:2px;word-break:break-all">${esc(f.url)}</div>
-          </div>
-        `).join('')}
-      </div>
-      <div class="modal-actions">
-        <button class="btn-ok" onclick="suspendAllErrors()">
-          全件を更新外にする
-        </button>
-        <button class="btn-cancel" onclick="errs.forEach(f=>clearErrorAndRetry(f.id))">全件再試行</button>
-        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">閉じる</button>
-      </div>
-    </div>
-  </div>`;
-}
-
-/* エラー一覧表示 */
-function showErrorList(){
-  const errs = follows.filter(f=>f.error);
-  if(!errs.length) return;
   const errIds = errs.map(f=>f.id); // IDを先に取得しておく
 
   document.getElementById('modalContainer').innerHTML = `
-  <div class="modal-backdrop" onclick="document.getElementById('modalContainer').innerHTML=''">
-    <div class="modal" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
+  <div class="modal-backdrop" data-click="1" data-action="closeModalContainerIfBackdrop" data-args='["@el","@evt"]'>
+    <div class="modal" style="max-height:80vh;overflow-y:auto">
       <h2>取得エラー（${errs.length}件）</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:1rem">
         「更新外」にするとチャンネルを残したまま自動更新をスキップします
@@ -5159,11 +5161,11 @@ function showErrorList(){
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
               <span style="font-size:13px;font-weight:500">${esc(f.name)}</span>
               <button class="btn-cancel" style="margin-left:auto;font-size:11px;padding:2px 8px"
-                onclick="retrySingle(${f.id})">
+                data-click="1" data-action="retrySingle" data-args="${dargs([f.id])}">
                 再試行
               </button>
               <button class="btn-cancel" style="font-size:11px;padding:2px 8px;color:var(--accent-mid);border-color:var(--accent-mid)"
-                onclick="suspendFollow(${f.id})">
+                data-click="1" data-action="suspendFollow" data-args="${dargs([f.id])}">
                 更新外にする
               </button>
             </div>
@@ -5173,11 +5175,11 @@ function showErrorList(){
         `).join('')}
       </div>
       <div class="modal-actions">
-        <button class="btn-ok" onclick="suspendAllErrors()">
+        <button class="btn-ok" data-click="1" data-action="suspendAllErrors">
           全件を更新外にする
         </button>
-        <button class="btn-cancel" onclick="retryAllErrors(${JSON.stringify(errIds)})">全件再試行</button>
-        <button class="btn-cancel" onclick="document.getElementById('modalContainer').innerHTML=''">閉じる</button>
+        <button class="btn-cancel" data-click="1" data-action="retryAllErrors" data-args="${dargs([errIds])}">全件再試行</button>
+        <button class="btn-cancel" data-click="1" data-action="closeModalContainer">閉じる</button>
       </div>
     </div>
   </div>`;
