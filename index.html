@@ -1052,7 +1052,7 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.09</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0810.11</span>
 </div>
 
 <div id="modalContainer"></div>
@@ -2296,8 +2296,11 @@ function openRevivalHistory(){
       <div id="revivalHistBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
     </div>`;
     document.body.appendChild(m);
-    // モーダル内クリックが背景（クリックで閉じる）まで伝播しないようにする
-    m.querySelector('.modal').addEventListener('click', e=>e.stopPropagation());
+    // 背景クリックで閉じる処理はm.onclickの e.target===m 判定だけで十分
+    // （中の要素をクリックした場合、targetは常にmではないため誤って閉じることはない）。
+    // ここで.modalにstopPropagationを付けると、data-click委任リスナー（document側で
+    // 拾う仕組み）までイベントが届かなくなり、モーダル内の全ボタンが反応しなくなる
+    // 不具合になるため、あえて付けない。
   }
   m.style.display = 'flex';
   renderRevivalHistory();
@@ -2404,19 +2407,24 @@ function openLogModal(f){
     m.id = 'logModal';
     m.className = 'modal-backdrop';
     m.onclick = (e)=>{ if(e.target===m) closeLogModal(); };
-    m.innerHTML = `<div class="modal" style="max-width:720px;width:92%;max-height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    m.innerHTML = `<div class="modal" style="max-width:720px;width:92%;max-height:84vh;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <h2 style="margin:0">取得ログ</h2>
         <div id="logFilterBtns" style="display:flex;gap:4px;margin-left:8px"></div>
         <div id="logChannelFilter"></div>
-        <button class="btn-cancel" style="margin-left:auto" onclick="exportFetchLog()">エクスポート</button>
-        <button class="btn-cancel" onclick="clearFetchLog()">クリア</button>
-        <button class="btn-cancel" onclick="closeLogModal()">閉じる</button>
+        <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="exportFetchLog">エクスポート</button>
+        <button class="btn-cancel" data-click="1" data-action="clearFetchLog">クリア</button>
+        <button class="btn-cancel" data-click="1" data-action="closeLogModal">閉じる</button>
       </div>
       <div id="logStats" style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.7"></div>
       <div id="logModalBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
     </div>`;
     document.body.appendChild(m);
+    // 背景クリックで閉じる処理はm.onclickの e.target===m 判定だけで十分
+    // （中の要素をクリックした場合、targetは常にmではないため誤って閉じることはない）。
+    // ここで.modalにstopPropagationを付けると、data-click委任リスナー（document側で
+    // 拾う仕組み）までイベントが届かなくなり、モーダル内の全ボタンが反応しなくなる
+    // 不具合になるため、あえて付けない。
   }
   m.style.display = 'flex';
   renderLogModal();
@@ -2448,7 +2456,7 @@ function renderLogModal(){
     chipEl.innerHTML = logNameFilter
       ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:99px;background:var(--accent-light);color:var(--accent-mid);border:1px solid var(--accent-mid)">
           ${esc(logNameFilter)}
-          <button onclick="clearLogChannelFilter()" title="絞り込みを解除" style="border:none;background:none;cursor:pointer;color:inherit;font-size:12px;line-height:1;padding:0">✕</button>
+          <button data-click="1" data-action="clearLogChannelFilter" title="絞り込みを解除" style="border:none;background:none;cursor:pointer;color:inherit;font-size:12px;line-height:1;padding:0">✕</button>
         </span>`
       : '';
   }
@@ -2501,7 +2509,7 @@ function renderLogModal(){
   // フィルターボタン
   const fb = document.getElementById('logFilterBtns');
   if(fb){
-    const mk = (key,label)=>`<button onclick="setLogFilter('${key}')" style="font-size:11px;padding:3px 10px;border-radius:99px;border:1px solid var(--border-strong);cursor:pointer;background:${logFilter===key?'var(--accent-mid)':'var(--surface)'};color:${logFilter===key?'#fff':'var(--text)'}">${label}</button>`;
+    const mk = (key,label)=>`<button data-click="1" data-action="setLogFilter" data-args='["${key}"]' style="font-size:11px;padding:3px 10px;border-radius:99px;border:1px solid var(--border-strong);cursor:pointer;background:${logFilter===key?'var(--accent-mid)':'var(--surface)'};color:${logFilter===key?'#fff':'var(--text)'}">${label}</button>`;
     fb.innerHTML = mk('all','すべて')+mk('ok','成功')+mk('fail','失敗');
   }
   // 一覧
@@ -2542,13 +2550,13 @@ function renderLogModal(){
     const suspendBtn = (!l.ok && targetFollow)
       ? (targetFollow.suspended
           ? `<span style="flex-shrink:0;font-size:11px;color:var(--text-faint)">対象外済み</span>`
-          : `<button onclick="event.stopPropagation();suspendFromLog(${targetFollow.id})" style="flex-shrink:0;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--danger);color:var(--danger);background:none;cursor:pointer">対象外にする</button>`)
+          : `<button data-click="1" data-action="suspendFromLog" data-args="[${targetFollow.id}]" style="flex-shrink:0;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--danger);color:var(--danger);background:none;cursor:pointer">対象外にする</button>`)
       : '';
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;${attemptsRow?'':'border-bottom:1px solid var(--border);'}font-size:12px">
       <span style="color:${color};font-weight:bold;width:14px;flex-shrink:0">${icon}</span>
       <span style="color:var(--text-faint);font-family:'DM Mono',monospace;flex-shrink:0">${date} ${time}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${targetFollow?'cursor:pointer;color:var(--accent-mid);text-decoration:underline dotted':''}"
-        ${targetFollow?`onclick="event.stopPropagation();openFollowPanel(${targetFollow.id})" title="このチャンネルの設定を開く"`:''}
+        ${targetFollow?`data-click="1" data-action="openFollowPanel" data-args="[${targetFollow.id}]" title="このチャンネルの設定を開く"`:''}
       >${esc(l.name||'')}</span>
       ${via} ${ms}
       <span style="color:${l.ok?'var(--text-muted)':color};flex-shrink:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${detail}</span>
