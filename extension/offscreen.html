@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Fraidycat Clone offscreen document</title>
+</head>
+<body>
+<!--
+  このページはユーザーには表示されない「オフスクリーンドキュメント」。
+  Service Worker (background.js) にはDOMParserが存在しないため、
+  DOMParserが必要なRSS/Atomのパース処理だけをこちらで肩代わりする。
+-->
+<script src="parser.js"></script>
+<script src="offscreen.js"></script>
+</body>
+</html>
