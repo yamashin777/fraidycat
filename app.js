@@ -109,35 +109,7 @@ document.addEventListener('error', function(e){
 }, true);
 
 /* ── CORS proxy options (tried in order) ── */
-const PROXIES = [
-  async url => {
-    const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
-    if(!r.ok) throw new Error(`allorigins HTTP ${r.status}`);
-    const j = await r.json();
-    const t = j.contents || '';
-    if(!t) throw new Error('allorigins: empty');
-    return t;
-  },
-  async url => {
-    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
-    if(!r.ok) throw new Error(`corsproxy HTTP ${r.status}`);
-    return await r.text();
-  },
-  async url => {
-    const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
-    if(!r.ok) throw new Error(`rss2json HTTP ${r.status}`);
-    const j = await r.json();
-    if(j.status !== 'ok') throw new Error('rss2json: ' + (j.message||'error'));
-    return {rss2json: j};
-  },
-  async url => {
-    const r = await fetch(`https://feedproxy.google.com/${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
-    if(!r.ok) throw new Error(`feedproxy HTTP ${r.status}`);
-    return await r.text();
-  },
-];
-const PROXY_NAMES = ['allorigins', 'corsproxy', 'rss2json', 'feedproxy'];
-let lastUsedProxy = '';
+/* PROXIES / PROXY_NAMES / lastUsedProxy は fetcher.js に移動（Service Workerとも共有するため） */
 
 // ── フェッチログ（PC向け・localStorage保存） ──
 // ログ上限はチャンネル数に応じて自動調整（一周分＋余裕）。
@@ -736,121 +708,7 @@ function load(){
 
 /* ── RSS Fetch ── */
 // プロキシごとのクールダウン管理（429を受けたら一定時間スキップ）
-const proxyCooldownUntil = [0, 0, 0, 0];
-const PROXY_COOLDOWN_MS = 5 * 60 * 1000; // 5分
-let proxyRotation = 0; // チャンネルごとに開始プロキシをずらす
-
-// エラーメッセージを分かりやすい日本語に整形（429→レート制限など）
-function humanizeProxyError(msg){
-  msg = msg || 'エラー';
-  if(/\b429\b/.test(msg)) return 'レート制限';
-  if(/Failed to fetch|NetworkError|ERR_FAILED/i.test(msg)) return 'ネットワーク失敗';
-  if(/timeout|aborted|signal/i.test(msg)) return 'タイムアウト';
-  const m = msg.match(/HTTP (\d{3})/);
-  if(m){
-    if(m[1]==='403') return 'アクセス拒否';
-    if(m[1]==='500'||m[1]==='502'||m[1]==='503') return 'サーバーエラー';
-    return `エラー(${m[1]})`;
-  }
-  return msg.length > 24 ? msg.slice(0,24)+'…' : msg;
-}
-
-// 直近のフェッチで各プロキシがどうだったか（doFetchがログに使う）
-let lastProxyAttempts = [];
-
-// CORSプロキシを介さない直接取得（対応しているサイトのみ成功する）
-async function fetchDirect(url){
-  const r = await fetch(url, {signal:AbortSignal.timeout(8000), mode:'cors'});
-  if(!r.ok) throw new Error(`direct HTTP ${r.status}`);
-  return await r.text();
-}
-
-async function fetchRSSRaw(url){
-  let lastErr;
-  const n = PROXIES.length;
-  const attempts = []; // {proxy, ok, reason}
-
-  // まずCORSプロキシを使わず直接取得を試す。
-  // 対応しているサイト（多くの一般ブログ・ポッドキャストフィードなど）なら、
-  // プロキシを経由せず高速かつ直接取得できる。
-  // ただしYouTubeはCORSに対応しておらず必ず失敗するとわかっているため、
-  // 無駄な試行・ログを避けるためここでは試さずプロキシへ直行する。
-  if(!/youtube\.com/i.test(url)){
-    try{
-      lastUsedProxy = 'direct';
-      if(loadingCount > 0) updateFetchStatus();
-      const result = await fetchDirect(url);
-      attempts.push({proxy:'direct', ok:true});
-      lastProxyAttempts = attempts;
-      return result;
-    }catch(e){
-      attempts.push({proxy:'direct', ok:false, reason:humanizeProxyError(e?.message)});
-    }
-  }
-
-  const now0 = Date.now();
-
-  // 全プロキシが休止中の場合、以前は最も早く明ける1つだけ試してすぐ諦めていたが、
-  // どうせ失敗覚悟の状況なので、休止期限が近い順に全プロキシを試してから諦める
-  // （休止判定はこちら側の自己申告的なクールダウンであり、実際には空いている
-  // 可能性もあるため、無駄でも試す方が成功率が上がる）。
-  const available = [];
-  for(let i=0; i<n; i++) if(now0 >= proxyCooldownUntil[i]) available.push(i);
-  if(available.length === 0){
-    const order2 = Array.from({length:n}, (_,i)=>i).sort((a,b)=>proxyCooldownUntil[a]-proxyCooldownUntil[b]);
-    for(const i of order2){
-      const pname = PROXY_NAMES[i] || `p${i}`;
-      lastUsedProxy = pname;
-      if(loadingCount > 0) updateFetchStatus();
-      try{
-        const r = await PROXIES[i](url);
-        attempts.push({proxy:pname, ok:true});
-        lastProxyAttempts = attempts;
-        return r;
-      }catch(e){
-        attempts.push({proxy:pname, ok:false, reason:humanizeProxyError(e?.message)});
-      }
-    }
-    lastProxyAttempts = attempts;
-    throw new Error(`全プロキシ休止中 — ${attempts.map(a=>`${a.proxy}:${a.reason}`).join(' / ')}`);
-  }
-
-  // 優先度順の試行順を組み立てる（feedproxyは常に最後）
-  const preferred = [];
-  for(let i=0;i<n;i++) if(PROXY_NAMES[i] !== 'feedproxy') preferred.push(i);
-  const deprioritized = [];
-  for(let i=0;i<n;i++) if(PROXY_NAMES[i] === 'feedproxy') deprioritized.push(i);
-  const rot = proxyRotation % (preferred.length || 1);
-  proxyRotation++;
-  const order = preferred.slice(rot).concat(preferred.slice(0, rot)).concat(deprioritized);
-  for(let k=0; k<order.length; k++){
-    const i = order[k];
-    const pname = PROXY_NAMES[i] || `p${i}`;
-    // クールダウン中のプロキシはスキップ（ログには残さない）
-    if(Date.now() < proxyCooldownUntil[i]) continue;
-    lastUsedProxy = pname;
-    if(loadingCount > 0) updateFetchStatus();
-    try{
-      const result = await PROXIES[i](url);
-      attempts.push({proxy:pname, ok:true});
-      lastProxyAttempts = attempts;
-      return result; // string or {rss2json:...}
-    }catch(e){
-      lastErr = e;
-      const reason = humanizeProxyError(e?.message);
-      attempts.push({proxy:pname, ok:false, reason});
-      // レート制限・アクセス拒否・ネットワーク失敗ならそのプロキシを一定時間休ませる
-      // （403は特定チャンネルの一時的な問題ではなく、プロキシ側がこの接続元からの
-      // アクセスを継続的に拒否しているケースが大半のため、429と同様に休止対象とする）
-      if(/\b429\b/.test(e?.message||'') || /\b403\b/.test(e?.message||'') || /Failed to fetch|NetworkError|ERR_FAILED/i.test(e?.message||'')){
-        proxyCooldownUntil[i] = Date.now() + PROXY_COOLDOWN_MS;
-      }
-    }
-  }
-  lastProxyAttempts = attempts;
-  const detail = attempts.map(a=>`${a.proxy}:${a.ok?'OK':a.reason}`).join(' / ');
-  throw new Error(detail || '全プロキシ失敗');
-}
+/* proxyCooldownUntil / PROXY_COOLDOWN_MS / proxyRotation / humanizeProxyError / lastProxyAttempts / fetchDirect / fetchRSSRaw は fetcher.js に移動 */
 
 /* parseFeedTitle / getEl / parseRSS は parser.js に移動（DOMParser系の共通処理として抽出） */
 
@@ -4179,6 +4037,39 @@ render();
 setStatus('idle','準備完了');
 // 起動時にも取得時刻スケジュールをチェック（取りこぼし防止）
 setTimeout(()=>{ try{ checkFetchSchedules(); }catch(e){} }, 8000);
+
+// 拡張機能のService Workerが、このタブを開いていない間にバックグラウンドで
+// 取得した新しい投稿があれば起動時に取り込む（chrome.storage.local →
+// localStorageへ一方向でマージ。GitHub同期の二重pushを避けるためsave(false)）。
+async function reconcileFromChromeStorage(){
+  try{
+    const stored = await chrome.storage.local.get('fraidycat_follows');
+    const bgFollows = stored.fraidycat_follows;
+    if(!Array.isArray(bgFollows) || !bgFollows.length) return;
+    const byId = new Map(bgFollows.map(bf=>[bf.id, bf]));
+    let changed = false;
+    follows.forEach(f=>{
+      const bg = byId.get(f.id);
+      if(!bg || !bg.lastFetched) return;
+      if(!f.lastFetched || bg.lastFetched > f.lastFetched){
+        f.posts = (bg.posts||[]).map(p=>({
+          ...p,
+          // 文字列で保存されたdateをDateオブジェクトに復元（load()と同じ規約）
+          date: p.date ? new Date(p.date) : null
+        })).filter(p => !p.date || !isNaN(p.date.getTime()));
+        f.lastFetched = bg.lastFetched;
+        f.error = bg.error !== undefined ? bg.error : f.error;
+        if(bg.name) f.name = bg.name;
+        changed = true;
+      }
+    });
+    if(changed){
+      save(false);
+      render();
+    }
+  }catch(e){ console.warn('chrome.storage.localからの取り込みに失敗:', e); }
+}
+if(hasChromeStorage) reconcileFromChromeStorage();
 
 /* スマホ用検索バーのイベント設定 */
 (function(){

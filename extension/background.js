@@ -21,8 +21,7 @@ chrome.action.onClicked.addListener(async () => {
  * Service Worker（このファイル）にはDOMParserが存在しないため、
  * XML/Atomのパースだけは非表示の「オフスクリーンドキュメント」
  * (offscreen.html) に一時的に任せる。既に開いていれば使い回し、
- * なければ作成する。タブを開いていなくても動作するバックグラウンド
- * 更新（今後実装予定）の土台として用意している。
+ * なければ作成する。
  */
 const OFFSCREEN_URL = 'offscreen.html';
 let creatingOffscreenDocument; // 同時に複数回作成しようとした場合の競合防止
@@ -80,3 +79,117 @@ async function parseFeedViaOffscreen(raw) {
   }
   return response.data;
 }
+
+/*
+ * ── CORSプロキシ経由のフィード取得 ──
+ * fetcher.js（app.jsと共通）を読み込む。PROXIES / fetchRSSRaw 等が
+ * このスコープに定義される。ページ側UI専用のloadingCount/updateFetchStatus
+ * が無いことはfetcher.js側でガード済み。
+ */
+importScripts('fetcher.js');
+
+/*
+ * ── タブを開いていなくても定期的にバックグラウンドで更新する ──
+ *
+ * chrome.alarms は本番では最短1分間隔までしか設定できないため、
+ * 1分ごとに起こして「今更新すべきチャンネル」を少数だけ処理する。
+ * 517チャンネルなど多い場合でも、1tickで全部処理しようとすると
+ * Service Workerの寿命内に終わらない可能性があるため、1回のtickで
+ * 処理する件数には上限を設ける（優先度: 最も長く放置されている順）。
+ */
+const BG_ALARM_NAME = 'fraidycat-bg-refresh';
+const BG_BATCH_SIZE = 3;
+const BG_FETCH_LOG_MAX = 200;
+
+// app.js の FREQ_INTERVAL / jitterRatio / shouldRefetch と同じロジック。
+// app.js側を変更した場合はこちらも合わせて更新すること。
+const BG_FREQ_INTERVAL = {
+  '5分': 5 * 60 * 1000, '15分': 15 * 60 * 1000, '30分': 30 * 60 * 1000,
+  '1時間': 60 * 60 * 1000, '6時間': 6 * 60 * 60 * 1000,
+};
+function bgJitterRatio(id) {
+  let h = 0;
+  const s = String(id);
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+  return (h % 10000) / 10000;
+}
+function bgShouldRefetch(f) {
+  if (f.suspended) return false;
+  const interval = BG_FREQ_INTERVAL[f.freq];
+  if (interval == null) return false; // 手動は自動更新しない
+  if (!f.lastFetched) return true;
+  const jitter = (bgJitterRatio(f.id) * 0.3 - 0.15) * interval; // -15%〜+15%
+  return Date.now() - f.lastFetched > interval + jitter;
+}
+
+async function addBgFetchLog(entry) {
+  entry.at = Date.now();
+  const { fraidycat_bg_fetch_log } = await chrome.storage.local.get('fraidycat_bg_fetch_log');
+  const log = Array.isArray(fraidycat_bg_fetch_log) ? fraidycat_bg_fetch_log : [];
+  log.unshift(entry);
+  if (log.length > BG_FETCH_LOG_MAX) log.length = BG_FETCH_LOG_MAX;
+  await chrome.storage.local.set({ fraidycat_bg_fetch_log: log });
+}
+
+async function runBackgroundRefreshTick() {
+  const { fraidycat_follows } = await chrome.storage.local.get('fraidycat_follows');
+  if (!Array.isArray(fraidycat_follows) || !fraidycat_follows.length) return;
+
+  const due = fraidycat_follows
+    .filter(bgShouldRefetch)
+    .sort((a, b) => (a.lastFetched || 0) - (b.lastFetched || 0)); // 放置期間が長い順
+  if (!due.length) return;
+
+  const batch = due.slice(0, BG_BATCH_SIZE);
+  const results = []; // {id, posts, lastFetched, error, name}
+
+  for (const f of batch) {
+    const startAt = Date.now();
+    try {
+      const raw = await fetchRSSRaw(f.url);
+      const parsed = await parseFeedViaOffscreen(raw);
+      // date は chrome.storage への保存前にISO文字列へ正規化する
+      // （app.js側のsave()と同じ規約。読み込み側のload()/reconcileFromChromeStorage()が
+      // 文字列からDateへ復元する前提）
+      const normPosts = (parsed.posts || []).map(p => ({
+        ...p,
+        date: p.date instanceof Date ? p.date.toISOString() : (p.date || null),
+      }));
+      const update = { id: f.id, posts: normPosts, lastFetched: Date.now(), error: null };
+      if (parsed.feedTitle && f.name === f.url) update.name = parsed.feedTitle;
+      results.push(update);
+      await addBgFetchLog({ id: f.id, name: f.name, ok: true, count: parsed.posts.length, ms: Date.now() - startAt });
+    } catch (e) {
+      results.push({ id: f.id, error: `取得エラー: ${e.message}` });
+      await addBgFetchLog({ id: f.id, name: f.name, ok: false, error: String(e.message || e), ms: Date.now() - startAt });
+    }
+  }
+
+  // 書き込み直前に最新のfraidycat_followsを読み直してマージする
+  // （tick実行中にタブ側で編集・保存された可能性があるため、丸ごと上書きしない）
+  const { fraidycat_follows: latest } = await chrome.storage.local.get('fraidycat_follows');
+  const list = Array.isArray(latest) ? latest : fraidycat_follows;
+  const byId = new Map(results.map(r => [r.id, r]));
+  const merged = list.map(f => {
+    const r = byId.get(f.id);
+    if (!r) return f;
+    return { ...f, ...r };
+  });
+  await chrome.storage.local.set({ fraidycat_follows: merged });
+}
+
+function ensureBgAlarm() {
+  chrome.alarms.create(BG_ALARM_NAME, { periodInMinutes: 1 });
+}
+chrome.runtime.onInstalled.addListener(ensureBgAlarm);
+chrome.runtime.onStartup.addListener(ensureBgAlarm);
+// Service Workerが起動した直後（onInstalled/onStartupが発火しないケースも含め）
+// にも念のためアラームの存在を保証しておく。
+ensureBgAlarm();
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== BG_ALARM_NAME) return;
+  runBackgroundRefreshTick().catch((e) => {
+    console.error('fraidycat: バックグラウンド更新tickでエラー', e);
+  });
+});
