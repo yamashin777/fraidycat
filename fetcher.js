@@ -44,6 +44,12 @@ const PROXIES = [
 const PROXY_NAMES = ['allorigins', 'corsproxy', 'rss2json', 'feedproxy'];
 let lastUsedProxy = '';
 
+// Chrome拡張機能の特権コンテキスト（Service Worker／chrome-extension://で開いた
+// ページ）で実行中かどうか。拡張機能はmanifest.jsonのhost_permissionsにより、
+// 通常のWebページと違ってCORSを気にせず直接fetchできる（要host_permissions）。
+// 普通のWebページ（GitHub Pages版）では常にfalseになり、従来通りプロキシ必須。
+const isExtensionContext = typeof chrome !== 'undefined' && !!(chrome.runtime && chrome.runtime.id);
+
 const proxyCooldownUntil = [0, 0, 0, 0];
 const PROXY_COOLDOWN_MS = 5 * 60 * 1000; // 5分
 let proxyRotation = 0; // チャンネルごとに開始プロキシをずらす
@@ -81,9 +87,11 @@ async function fetchRSSRaw(url){
   // まずCORSプロキシを使わず直接取得を試す。
   // 対応しているサイト（多くの一般ブログ・ポッドキャストフィードなど）なら、
   // プロキシを経由せず高速かつ直接取得できる。
-  // ただしYouTubeはCORSに対応しておらず必ず失敗するとわかっているため、
-  // 無駄な試行・ログを避けるためここでは試さずプロキシへ直行する。
-  if(!/youtube\.com/i.test(url)){
+  // 通常のWebページ（GitHub Pages版）ではYouTubeはCORSに対応しておらず
+  // 必ず失敗するとわかっているため、無駄な試行・ログを避けてプロキシへ直行する。
+  // ただしChrome拡張機能側（isExtensionContext）はhost_permissionsにより
+  // CORS制限を受けずに直接fetchできるため、YouTubeでも直接取得を試す。
+  if(isExtensionContext || !/youtube\.com/i.test(url)){
     try{
       lastUsedProxy = 'direct';
       if(typeof loadingCount !== 'undefined' && loadingCount > 0 && typeof updateFetchStatus === 'function') updateFetchStatus();
