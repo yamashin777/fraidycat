@@ -48,6 +48,11 @@ body{display:flex;flex-direction:column;min-height:100vh}
   color:var(--accent);flex-shrink:0;
 }
 .logo span{color:var(--text-muted);font-style:italic}
+.logo-clone-badge{
+  font-family:'DM Sans',sans-serif;font-size:10px;font-style:normal;font-weight:500;
+  color:var(--accent);border:1px solid var(--accent);border-radius:8px;
+  padding:1px 6px;margin-left:6px;letter-spacing:0;vertical-align:middle;
+}
 .tags-scroll{
   flex:1;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;align-items:center;
 }
