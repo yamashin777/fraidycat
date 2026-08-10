@@ -839,8 +839,10 @@ async function fetchRSSRaw(url){
       lastErr = e;
       const reason = humanizeProxyError(e?.message);
       attempts.push({proxy:pname, ok:false, reason});
-      // レート制限またはネットワーク失敗ならそのプロキシを一定時間休ませる
-      if(/\b429\b/.test(e?.message||'') || /Failed to fetch|NetworkError|ERR_FAILED/i.test(e?.message||'')){
+      // レート制限・アクセス拒否・ネットワーク失敗ならそのプロキシを一定時間休ませる
+      // （403は特定チャンネルの一時的な問題ではなく、プロキシ側がこの接続元からの
+      // アクセスを継続的に拒否しているケースが大半のため、429と同様に休止対象とする）
+      if(/\b429\b/.test(e?.message||'') || /\b403\b/.test(e?.message||'') || /Failed to fetch|NetworkError|ERR_FAILED/i.test(e?.message||'')){
         proxyCooldownUntil[i] = Date.now() + PROXY_COOLDOWN_MS;
       }
     }
