@@ -454,6 +454,13 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .fp-weekly{background:#5A3A0022;color:var(--pill-weekly)}
 .fp-monthly{background:#4A1A6B22;color:var(--pill-monthly)}
 .fp-yearly{background:#5A1A1A22;color:var(--pill-yearly)}
+/* サイドバー・ドロワーの頻度フィルター用（freq-pillをクリック可能にしたもの） */
+.sb-freq-chip{
+  border:1.5px solid transparent;cursor:pointer;font-weight:500;
+  transition:transform 0.1s;
+}
+.sb-freq-chip:hover{transform:scale(1.06)}
+.sb-freq-chip.active{border-color:currentColor}
 .sched-pill{
   font-size:10px;font-family:'DM Mono',monospace;
   padding:2px 7px;border-radius:99px;white-space:nowrap;

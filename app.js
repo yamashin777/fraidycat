@@ -2510,12 +2510,16 @@ function openDrawer(){
     };
 
     html += makeBtn(`すべて（${follows.length}）`, '📋', !activeFreq && activeTag==='すべて' && !searchQuery, null, 'すべて');
+    // 頻度は横並びの小さなピルで省スペース化（カード側のfreq-pillと同じ配色）
     const allFreqs = [...new Set([...FREQS, ...Object.keys(freqCounts)])];
+    html += `<div style="display:flex;flex-wrap:wrap;gap:5px;padding:2px 12px 8px">`;
     allFreqs.forEach(fr=>{
       const cnt = freqCounts[fr]||0;
       if(!cnt) return;
-      html += makeBtn(`${freqLabel(fr)}（${cnt}）`, '⏱', activeFreq===fr, fr, undefined);
+      const pillClass = FREQ_PILL[fr] || '';
+      html += `<button class="freq-pill sb-freq-chip ${pillClass}${activeFreq===fr?' active':''}" data-freq="${fr}">${freqLabel(fr)} ${cnt}</button>`;
     });
+    html += `</div>`;
     // 個別指定（取得時刻設定済み）を別枠で
     const scheduledCount = follows.filter(f=>f.fetchTimes && f.fetchTimes.length>0).length;
     if(scheduledCount > 0){
@@ -2620,21 +2624,19 @@ function renderSidebar(){
 
   let html = `<div class="sb-total">計 ${follows.length}件</div>`;
 
-  // 頻度フィルター
+  // 頻度フィルター（横並びの小さなピルで省スペース化。カード側のfreq-pillと同じ配色）
   html += `<div class="sb-section">頻度</div>`;
+  html += `<div style="display:flex;flex-wrap:wrap;gap:5px;padding:0 1.25rem 8px">`;
   FREQS.forEach(fr=>{
     const cnt = freqCounts[fr] || 0;
     if(!cnt) return;
-    html += `<button class="sb-btn${activeFreq===fr?' active':''}" data-click="1" data-action="setFreq" data-args="${dargs([fr])}">
-      <div class="sb-dot"></div>${freqLabel(fr)}
-      <span class="sb-count">${cnt}</span>
-    </button>`;
+    const pillClass = FREQ_PILL[fr] || '';
+    html += `<button class="freq-pill sb-freq-chip ${pillClass}${activeFreq===fr?' active':''}" data-click="1" data-action="setFreq" data-args="${dargs([fr])}">${freqLabel(fr)} ${cnt}</button>`;
   });
   if(activeFreq){
-    html += `<button class="sb-btn" data-click="1" data-action="setFreq" data-args="${dargs([null])}">
-      <div class="sb-dot"></div>すべて
-    </button>`;
+    html += `<button class="freq-pill sb-freq-chip" data-click="1" data-action="setFreq" data-args="${dargs([null])}">すべて</button>`;
   }
+  html += `</div>`;
 
   // 個別指定（取得時刻が設定されたチャンネル）を別枠で表示
   const scheduledCount = follows.filter(f=>f.fetchTimes && f.fetchTimes.length>0).length;
