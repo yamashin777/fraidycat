@@ -1456,8 +1456,11 @@ function renderFollowCard(f){
   const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
   const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
   // マーク色が付いていないカードは、YouTube以外（RSS/ブログ・Podcast等）を
-  // 背景色でひと目で区別できるようにする（マーク色が優先される）
-  const nonYoutubeClass = (!markBg && f.platform !== 'YouTube') ? ' non-youtube' : '';
+  // 背景色でひと目で区別できるようにする（マーク色が優先される）。
+  // f.platformはURL編集時に追従しないことがあり古くなりうるため、
+  // 実際のURLから直接YouTubeかどうかを判定する（fetcher.js等と同じ判定方法）
+  const isYoutubeUrl = /youtube\.com|youtu\.be/i.test(f.url || '');
+  const nonYoutubeClass = (!markBg && !isYoutubeUrl) ? ' non-youtube' : '';
   return `
   <div class="follow-card${isExp?' expanded':''}${f.suspended?' suspended':''}${nonYoutubeClass}" id="fc-${f.id}"
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
