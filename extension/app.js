@@ -3747,6 +3747,7 @@ function exportJSON(){
       memo: f.memo, markColor: f.markColor, suspended: f.suspended,
       registeredAt: f.registeredAt, favorite: f.favorite, fetchTimes: f.fetchTimes,
       subscriberCount: f.subscriberCount, subscriberFetchedAt: f.subscriberFetchedAt,
+      iconUrl: f.iconUrl,
     }))
   };
   const json = JSON.stringify(data, null, 2);
