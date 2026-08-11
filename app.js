@@ -1455,8 +1455,11 @@ function renderFollowCard(f){
 
   const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
   const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
+  // マーク色が付いていないカードは、YouTube以外（RSS/ブログ・Podcast等）を
+  // 背景色でひと目で区別できるようにする（マーク色が優先される）
+  const nonYoutubeClass = (!markBg && f.platform !== 'YouTube') ? ' non-youtube' : '';
   return `
-  <div class="follow-card${isExp?' expanded':''}${f.suspended?' suspended':''}" id="fc-${f.id}"${markBg?` style="background:${markBg}"`:''}
+  <div class="follow-card${isExp?' expanded':''}${f.suspended?' suspended':''}${nonYoutubeClass}" id="fc-${f.id}"
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
     <div class="fc-row">
       <!-- PCではfc-previewにアイコンを表示、スマホではここに表示 -->
@@ -2519,8 +2522,19 @@ function openDrawer(){
       html += `<div style="height:0;border-top:1px dashed var(--border-strong);margin:4px 12px;opacity:.6"></div>`;
       html += makeBtn(`個別指定（${scheduledCount}）`, '🕗', activeTag==='__scheduled__', undefined, '__scheduled__');
     }
-    if(favoriteCount > 0)
+    if(favoriteCount > 0){
       html += makeBtn(`マーク済み（${favoriteCount}）`, '★', activeTag==='__favorite__', undefined, '__favorite__');
+      // 色ごとの内訳（例: 黄色マークが付いているのはどのチャンネルか、クリックして確認できる）
+      Object.entries(MARK_COLORS).forEach(([key, val])=>{
+        const markCnt = follows.filter(f=>f.markColor===key).length;
+        if(!markCnt) return;
+        const markTag = `__mark_${key}__`;
+        html += `<button class="drawer-btn${activeTag===markTag?' primary':''}" data-tag="${markTag}"
+          style="padding:6px 12px 6px 30px;font-size:12px">
+          <span class="drawer-icon" style="width:10px;height:10px;border-radius:50%;background:${val.border};display:inline-block"></span>${val.label}（${markCnt}）
+        </button>`;
+      });
+    }
     if(suspendedCount > 0)
       html += makeBtn(`更新外（${suspendedCount}）`, '⏸', activeTag==='__suspended__', undefined, '__suspended__');
 
@@ -2636,6 +2650,16 @@ function renderSidebar(){
         <div class="sb-dot" style="background:linear-gradient(135deg,#E00 25%,#07C 25%,#07C 50%,#080 50%,#080 75%,#E6B800 75%)"></div>マーク済み
         <span class="sb-count">${favoriteCount}</span>
       </button>`;
+      // 色ごとの内訳（例: 黄色マークが付いているのはどのチャンネルか、クリックして確認できる）
+      Object.entries(MARK_COLORS).forEach(([key, val])=>{
+        const markCnt = follows.filter(f=>f.markColor===key).length;
+        if(!markCnt) return;
+        const markTag = `__mark_${key}__`;
+        html += `<button class="sb-btn${activeTag===markTag?' active':''}" data-click="1" data-action="setTag" data-args="${dargs([markTag])}" style="padding-left:2.25rem">
+          <div class="sb-dot" style="background:${val.border}"></div>${val.label}
+          <span class="sb-count">${markCnt}</span>
+        </button>`;
+      });
     }
     if(suspendedCount > 0){
       html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['__suspended__'])}">
@@ -2919,6 +2943,8 @@ function renderMain(){
     if(activeTag === '__suspended__') return f.suspended;
     if(activeTag === '__favorite__') return f.favorite;
     if(activeTag === '__scheduled__') return f.fetchTimes && f.fetchTimes.length>0;
+    // マーク色ごとの絞り込み（例: __mark_yellow__ → markColorが'yellow'のものだけ表示）
+    if(activeTag && activeTag.startsWith('__mark_')) return f.markColor === activeTag.slice(7, -2);
     if(activeTag !== 'すべて' && !f.tags.includes(activeTag)) return false;
     if(activeFreq && f.freq !== activeFreq) return false;
     return true;
