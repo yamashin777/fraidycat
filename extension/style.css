@@ -180,8 +180,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 }
 .sb-drag-handle{font-size:14px;color:var(--text-faint);cursor:grab;margin-right:4px;flex-shrink:0;user-select:none}
 .sb-mark-swatch{
-  width:26px;height:26px;border-radius:50%;border:2px solid transparent;
-  cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;
+  width:18px;height:18px;border-radius:50%;border:1.5px solid transparent;
+  cursor:pointer;font-size:8px;font-family:'DM Mono',monospace;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;
   transition:transform 0.1s;
 }

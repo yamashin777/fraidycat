@@ -2533,9 +2533,9 @@ function openDrawer(){
         const markTag = `__mark_${key}__`;
         const textColor = key==='yellow' ? val.darkBg : '#fff';
         html += `<button data-tag="${markTag}" title="${val.label}マーク（${markCnt}件）"
-          style="width:26px;height:26px;border-radius:50%;background:${val.border};color:${textColor};
-          border:2px solid ${activeTag===markTag?'var(--text)':'transparent'};cursor:pointer;
-          font-size:10px;font-family:'DM Mono',monospace;display:flex;align-items:center;justify-content:center;flex-shrink:0">${markCnt}</button>`;
+          style="width:18px;height:18px;border-radius:50%;background:${val.border};color:${textColor};
+          border:1.5px solid ${activeTag===markTag?'var(--text)':'transparent'};cursor:pointer;
+          font-size:8px;font-family:'DM Mono',monospace;display:flex;align-items:center;justify-content:center;flex-shrink:0">${markCnt}</button>`;
       });
       html += `</div>`;
     }
