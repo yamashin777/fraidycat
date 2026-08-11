@@ -2524,16 +2524,20 @@ function openDrawer(){
     }
     if(favoriteCount > 0){
       html += makeBtn(`マーク済み（${favoriteCount}）`, '★', activeTag==='__favorite__', undefined, '__favorite__');
-      // 色ごとの内訳（例: 黄色マークが付いているのはどのチャンネルか、クリックして確認できる）
+      // 色ごとの内訳を横並びの小さなスウォッチで表示（省スペース）。
+      // タップでその色のチャンネルだけに絞り込める
+      html += `<div style="display:flex;gap:8px;padding:2px 12px 8px 42px">`;
       Object.entries(MARK_COLORS).forEach(([key, val])=>{
         const markCnt = follows.filter(f=>f.markColor===key).length;
         if(!markCnt) return;
         const markTag = `__mark_${key}__`;
-        html += `<button class="drawer-btn${activeTag===markTag?' primary':''}" data-tag="${markTag}"
-          style="padding:6px 12px 6px 30px;font-size:12px">
-          <span class="drawer-icon" style="width:10px;height:10px;border-radius:50%;background:${val.border};display:inline-block"></span>${val.label}（${markCnt}）
-        </button>`;
+        const textColor = key==='yellow' ? val.darkBg : '#fff';
+        html += `<button data-tag="${markTag}" title="${val.label}マーク（${markCnt}件）"
+          style="width:26px;height:26px;border-radius:50%;background:${val.border};color:${textColor};
+          border:2px solid ${activeTag===markTag?'var(--text)':'transparent'};cursor:pointer;
+          font-size:10px;font-family:'DM Mono',monospace;display:flex;align-items:center;justify-content:center;flex-shrink:0">${markCnt}</button>`;
       });
+      html += `</div>`;
     }
     if(suspendedCount > 0)
       html += makeBtn(`更新外（${suspendedCount}）`, '⏸', activeTag==='__suspended__', undefined, '__suspended__');
@@ -2650,16 +2654,19 @@ function renderSidebar(){
         <div class="sb-dot" style="background:linear-gradient(135deg,#E00 25%,#07C 25%,#07C 50%,#080 50%,#080 75%,#E6B800 75%)"></div>マーク済み
         <span class="sb-count">${favoriteCount}</span>
       </button>`;
-      // 色ごとの内訳（例: 黄色マークが付いているのはどのチャンネルか、クリックして確認できる）
+      // 色ごとの内訳を横並びの小さなスウォッチで表示（省スペース）。
+      // カーソルを乗せると色名・件数がツールチップで出る。クリックでその色に絞り込める
+      html += `<div style="display:flex;gap:8px;padding:2px 1.25rem 8px 2.25rem">`;
       Object.entries(MARK_COLORS).forEach(([key, val])=>{
         const markCnt = follows.filter(f=>f.markColor===key).length;
         if(!markCnt) return;
         const markTag = `__mark_${key}__`;
-        html += `<button class="sb-btn${activeTag===markTag?' active':''}" data-click="1" data-action="setTag" data-args="${dargs([markTag])}" style="padding-left:2.25rem">
-          <div class="sb-dot" style="background:${val.border}"></div>${val.label}
-          <span class="sb-count">${markCnt}</span>
-        </button>`;
+        const textColor = key==='yellow' ? val.darkBg : '#fff';
+        html += `<button class="sb-mark-swatch${activeTag===markTag?' active':''}" data-click="1" data-action="setTag" data-args="${dargs([markTag])}"
+          title="${val.label}マーク（${markCnt}件）"
+          style="background:${val.border};color:${textColor}">${markCnt}</button>`;
       });
+      html += `</div>`;
     }
     if(suspendedCount > 0){
       html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['__suspended__'])}">
