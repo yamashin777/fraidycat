@@ -329,8 +329,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .follow-card:hover{border-color:var(--border-strong)}
 .follow-card.expanded{border-color:var(--border-strong)}
 /* YouTube以外（RSS/ブログ・Podcast等）のカードを背景色でひと目で区別 */
-.follow-card.non-youtube{background:#EAF1FB}
-.follow-card.non-youtube:hover{background:#E0EAFA}
+.follow-card.non-youtube{background:#F1EAFB}
+.follow-card.non-youtube:hover{background:#E8DFF7}
 .refresh-flash{
   background:var(--accent-mid) !important;
   color:#fff !important;
