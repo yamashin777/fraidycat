@@ -330,8 +330,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .follow-card.expanded{border-color:var(--border-strong)}
 /* YouTube以外（RSS/ブログ・Podcast等）のカードを左端の帯でひと目で区別。
    マーク色（背景全体を塗る方式）とは違う見た目にして混同を避ける */
-.follow-card.non-youtube{border-left:10px double #9B6FD1}
-.follow-card.non-youtube:hover{border-left-color:#9B6FD1}
+.follow-card.non-youtube{border-left:10px double #9B6FD1;background:#F6F1FC}
+.follow-card.non-youtube:hover{border-left-color:#9B6FD1;background:#EFE6F9}
 .follow-card.non-youtube.expanded{border-left-color:#9B6FD1}
 .refresh-flash{
   background:var(--accent-mid) !important;
