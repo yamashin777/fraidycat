@@ -1234,22 +1234,40 @@ function renderLogModal(){
   try{
     const five = follows.filter(f=>f.freq==='5分' && !f.suspended && f.lastFetched);
     if(five.length){
-      const times = five.map(f=>f.lastFetched);
-      const rawSpan = Math.max(...times) - Math.min(...times);
-      // タブが非アクティブだった時間はブラウザ側で取得処理自体が間引かれるため、
-      // 純粋な「一周にかかった時間」からは除いて計算する（そうしないとタブの
-      // アクティブ／非アクティブだけで数値が大きくぶれ、参考にしづらいため）。
-      const hidden = hiddenMsWithin(Math.min(...times), Math.max(...times));
-      const span = Math.max(0, rawSpan - hidden);
-      const spanMin = Math.floor(span/60000), spanSec = Math.round((span%60000)/1000);
-      const spanStr = spanMin>0 ? `${spanMin}分${spanSec}秒` : `${spanSec}秒`;
-      const hiddenNote = hidden >= 5000 ? `（非アクティブ${Math.round(hidden/60000)}分を除く）` : '';
-      const over = span > 5*60*1000;
+      const now = Date.now();
+      // 長時間（30分以上）更新できていないチャンネルが1件でも混ざると、
+      // 「一周にかかった時間」が実態とかけ離れた値（例: 700分超）になって
+      // しまう。そうした停滞チャンネルは一周の計算から除外し、件数だけ
+      // 別枠で警告する。
+      const STUCK_MS = 30*60*1000;
+      const healthy = five.filter(f => now - f.lastFetched < STUCK_MS);
+      const stuckCount = five.length - healthy.length;
       const notYet = follows.filter(f=>f.freq==='5分' && !f.suspended && !f.lastFetched).length;
-      const color = over ? '#D33' : '#0A8';
-      const mark = over ? '⚠' : '✓';
-      freq5Warn = `<br><span style="color:${color};font-weight:500">${mark} 5分毎チャンネル: ${five.length}件 / 一周 約${spanStr}${hiddenNote}${over?'（5分超過：限界が近い、または超えています）':'（5分以内：余裕あり）'}</span>`
-        + (notYet ? `<span style="color:var(--text-faint)">（未取得 ${notYet}件）</span>` : '');
+      const stuckNote = stuckCount
+        ? `<br><span style="color:#D33;font-weight:500">⚠ ${stuckCount}件が30分以上未更新（プロキシ失敗等で停滞している可能性）</span>`
+        : '';
+      if(healthy.length){
+        const times = healthy.map(f=>f.lastFetched);
+        const rawSpan = Math.max(...times) - Math.min(...times);
+        // タブが非アクティブだった時間はブラウザ側で取得処理自体が間引かれるため、
+        // 純粋な「一周にかかった時間」からは除いて計算する（そうしないとタブの
+        // アクティブ／非アクティブだけで数値が大きくぶれ、参考にしづらいため）。
+        const hidden = hiddenMsWithin(Math.min(...times), Math.max(...times));
+        const span = Math.max(0, rawSpan - hidden);
+        const spanMin = Math.floor(span/60000), spanSec = Math.round((span%60000)/1000);
+        const spanStr = spanMin>0 ? `${spanMin}分${spanSec}秒` : `${spanSec}秒`;
+        const hiddenNote = hidden >= 5000 ? `（非アクティブ${Math.round(hidden/60000)}分を除く）` : '';
+        const over = span > 5*60*1000;
+        const color = over ? '#D33' : '#0A8';
+        const mark = over ? '⚠' : '✓';
+        freq5Warn = `<br><span style="color:${color};font-weight:500">${mark} 5分毎チャンネル: ${five.length}件 / 一周 約${spanStr}${hiddenNote}${over?'（5分超過：限界が近い、または超えています）':'（5分以内：余裕あり）'}</span>`
+          + (notYet ? `<span style="color:var(--text-faint)">（未取得 ${notYet}件）</span>` : '')
+          + stuckNote;
+      } else {
+        // 健全なチャンネルが1件もない（全て停滞中）場合
+        freq5Warn = `<br><span style="color:#D33;font-weight:500">⚠ 5分毎チャンネル: ${five.length}件（すべて30分以上未更新）</span>`
+          + (notYet ? `<span style="color:var(--text-faint)">（未取得 ${notYet}件）</span>` : '');
+      }
     }
   }catch(e){}
 
