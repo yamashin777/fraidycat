@@ -233,6 +233,13 @@ let ghPath  = localStorage.getItem('fraidycat_gh_path')  || 'data/follows.json';
 let ghSyncEnabled = localStorage.getItem('fraidycat_gh_sync') === 'true';
 let ghSha = null; // 最新ファイルのSHA（更新に必要）
 let ghSaveTimer = null;
+// 直近のローカル編集時刻（タグ変更等）。save()のたびに更新し、localStorageにも
+// 永続化する。GitHubへのアップロードはデバウンス（5〜12秒後）されるため、
+// 編集直後にページを再読み込みすると、アップロードが完了する前に古いGitHub側
+// データを読み込んでしまい、編集が消えて見える不具合があった。
+// 直近の編集から一定時間はGitHubからの読み込みをスキップすることで防ぐ。
+let lastLocalEditAt = parseInt(localStorage.getItem('fraidycat_last_local_edit_at'), 10) || 0;
+const GH_PULL_PROTECT_MS = 20000; // アップロードのデバウンス(最大12秒)より長めに確保
 
 function saveGhSettings(token, repo, path, enabled){
   ghToken = token; ghRepo = repo; ghPath = path; ghSyncEnabled = enabled;
@@ -249,6 +256,15 @@ function saveGhSettings(token, repo, path, enabled){
 /* GitHubからデータを読み込む */
 async function loadFromGitHub(){
   if(!ghSyncEnabled || !ghToken || !ghRepo) return false;
+  // 直近の編集がまだGitHubにアップロードされていない可能性がある間は、
+  // 古いGitHub側データで上書きしてしまわないよう読み込みをスキップする。
+  // （タグ変更などの編集直後にページを再読み込みすると、アップロードの
+  // デバウンス（最大12秒）が完了する前にGitHubから古いデータを取り込み、
+  // 編集が消えて見える不具合があったため）
+  if(Date.now() - lastLocalEditAt < GH_PULL_PROTECT_MS){
+    console.warn('直近の編集を保護するためGitHub読み込みをスキップしました');
+    return false;
+  }
   try{
     const res = await fetch(
       `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
@@ -572,6 +588,15 @@ function hideProgressBar(){
   if(fill){ fill.classList.remove('indeterminate'); fill.style.width = '100%'; }
   if(text){ text.textContent = '更新完了'; }
   setTimeout(()=>{ bar.classList.remove('show'); }, 1000);
+}
+
+// ユーザーが手動で編集した（タグ・名前・メモ・URL・アイコン・マーク色・
+// 更新外・頻度）ことを記録する。GitHubへのアップロードは数秒遅れる
+// ため、その間にGitHubから読み込むと編集が上書きされて消えてしまう
+// のを防ぐためのガードに使う（loadFromGitHub側で参照）。
+function markLocalEdit(){
+  lastLocalEditAt = Date.now();
+  try{ localStorage.setItem('fraidycat_last_local_edit_at', String(lastLocalEditAt)); }catch(e){}
 }
 
 /* ── Storage ── */
@@ -1623,6 +1648,7 @@ function openMarkPopup(id, btn){
 function setMark(id, color){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
+  markLocalEdit();
   f.markColor = color || null;
   // favorite フラグと同期（サイドバーフィルター用）
   f.favorite = !!color;
@@ -1655,6 +1681,7 @@ function toggleRegDateInput(id){
 function toggleSuspend(id){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
+  markLocalEdit();
   f.suspended = !f.suspended;
   save();
   render();
@@ -1768,6 +1795,7 @@ function changeName(id, val){
   if(!f) return;
   const name = val.trim();
   if(!name) return;
+  markLocalEdit();
   f.name = name;
   f.initials = name.split(/[\s\/\-_]+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase().slice(0,2) || '??';
   save();
@@ -1782,6 +1810,7 @@ function changeUrl(id, val){
   if(!f) return;
   const url = val.trim();
   if(!url || url === f.url) return;
+  markLocalEdit();
   f.url = url;
   f.error = null;
   save();
@@ -1793,6 +1822,7 @@ function changeUrl(id, val){
 function changeMemo(id, val){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
+  markLocalEdit();
   f.memo = val.trim();
   save();
   // カード上のメモインライン表示を更新
@@ -1807,6 +1837,7 @@ function changeIcon(id, val){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
   const url = val.trim();
+  markLocalEdit();
   f.iconUrl = url || null;
   save();
   render();
@@ -1829,6 +1860,7 @@ function changeRegDate(id, val){
 function changeFreq(id, freq){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
+  markLocalEdit();
   f.freq = freq;
   save();
   render();
@@ -1844,6 +1876,7 @@ function splitTags(val){
 function changeTag(id, val){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
+  markLocalEdit();
   f.tags = splitTags(val);
   if(!f.tags.length) f.tags = ['一般'];
   save();
