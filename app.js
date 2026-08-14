@@ -739,8 +739,8 @@ function load(){
 
 /* ── Auto-detect feed name from URL ── */
 let autoFetchTimer = null;
-function showTagSuggestions(val){
-  const box = document.getElementById('tag-suggestions');
+function showTagSuggestions(val, boxId='tag-suggestions', inputId='f-tags', followId=null){
+  const box = document.getElementById(boxId);
   if(!box) return;
   // 最後のタグ（カーソル位置のもの）を取得
   const parts = val.split(/[,、\s\u3000]+/);
@@ -750,36 +750,39 @@ function showTagSuggestions(val){
     t.toLowerCase().includes(current) &&
     !parts.slice(0,-1).map(p=>p.trim()).includes(t) // 既に入力済みは除外
   );
+  const renderItems = list => list.map(t=>
+    `<div class="tag-suggest-item" data-click="1" data-action="selectTag" data-args="${dargs([t, inputId, boxId, followId])}">${esc(t)}</div>`
+  ).join('');
   if(!matched.length || !current){
     // currentが空でも全タグ表示
     const show = current ? matched : allTags;
     if(!show.length){ box.style.display='none'; return; }
-    box.innerHTML = show.map(t=>
-      `<div class="tag-suggest-item" data-click="1" data-action="selectTag" data-args="${dargs([t])}">${esc(t)}</div>`
-    ).join('');
+    box.innerHTML = renderItems(show);
     box.style.display = 'block';
     return;
   }
-  box.innerHTML = matched.map(t=>
-    `<div class="tag-suggest-item" data-click="1" data-action="selectTag" data-args="${dargs([t])}">${esc(t)}</div>`
-  ).join('');
+  box.innerHTML = renderItems(matched);
   box.style.display = 'block';
 }
 
-function hideTagSuggestions(){
-  const box = document.getElementById('tag-suggestions');
+function hideTagSuggestions(boxId='tag-suggestions'){
+  const box = document.getElementById(boxId);
   if(box) box.style.display = 'none';
 }
 
-function selectTag(tag){
-  const input = document.getElementById('f-tags');
+function selectTag(tag, inputId='f-tags', boxId='tag-suggestions', followId=null){
+  const input = document.getElementById(inputId);
   if(!input) return;
   const parts = input.value.split(/[,、\s\u3000]+/);
   parts[parts.length-1] = tag;
   input.value = parts.join(', ') + ', ';
-  formData.tags = input.value;
+  if(followId){
+    changeTag(followId, input.value); // フォローカード上：即確定＆保存
+  } else {
+    formData.tags = input.value; // 「追加」モーダル：フォームの下書きを更新
+  }
   input.focus();
-  hideTagSuggestions();
+  hideTagSuggestions(boxId);
 }
 
 async function autoFetchTitle(url){
@@ -1474,8 +1477,12 @@ function renderFollowCard(f){
         value="${esc(f.tags.join(', '))}"
         placeholder="例: キャンプ tech（スペース・カンマ区切り）"
         title="カンマ・半角スペース・全角スペースで区切って複数入力できます"
-        data-blur="1" data-action="changeTag" data-args="${dargs([f.id, '@value'])}"
+        autocomplete="off"
+        data-input="1" data-action="showTagSuggestions" data-args="${dargs(['@value', `tag-suggestions-${f.id}`, `tag-input-${f.id}`, f.id])}"
+        data-focus="1" data-action-focus="showTagSuggestions" data-args-focus="${dargs(['@value', `tag-suggestions-${f.id}`, `tag-input-${f.id}`, f.id])}"
+        data-blur="1" data-action-blur="handleCardTagBlur" data-args-blur="${dargs([f.id, '@value'])}"
         data-enter-blur="1">
+      <div id="tag-suggestions-${f.id}" class="fc-tag-suggestions" style="display:none"></div>
     </div>
     <div class="fc-tag-row">
       <span class="fc-freq-label">メモ：</span>
@@ -1678,6 +1685,12 @@ function toggleRegDateInput(id){
 }
 
 /* renderFollowCardのdata-action用の小さなラッパー群 */
+// カード上のタグ編集欄からフォーカスが外れた時：値を確定保存しつつ、
+// クリック確定（selectTag）が先に走れるよう少し遅らせて候補リストを閉じる
+function handleCardTagBlur(id, val){
+  changeTag(id, val);
+  setTimeout(()=>hideTagSuggestions(`tag-suggestions-${id}`), 200);
+}
 function toggleSuspend(id){
   const f = follows.find(x=>x.id===id);
   if(!f) return;
