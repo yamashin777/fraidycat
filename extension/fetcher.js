@@ -14,31 +14,45 @@
  * Service Workerには存在しないため、存在する場合のみ呼び出す。
  */
 
+// 200 OKでも、YouTube側のレート制限・プロキシ側のキャッシュ等の理由で
+// 実際のフィード内容ではなく空・エラーページ等が返ってくることがある。
+// <entry>/<item>タグが1つも含まれていない場合はフィードとして無効とみなし
+// 失敗扱いにする（そうすることで次のプロキシへのフォールバックが働き、
+// 「エラーにはならないが実質空」の結果を無言で成功扱いにしてしまうのを防ぐ）。
+function looksLikeFeed(text){
+  return /<entry[\s>]|<item[\s>]/i.test(text || '');
+}
+
 const PROXIES = [
   async url => {
     const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
     if(!r.ok) throw new Error(`allorigins HTTP ${r.status}`);
     const j = await r.json();
     const t = j.contents || '';
-    if(!t) throw new Error('allorigins: empty');
+    if(!looksLikeFeed(t)) throw new Error('allorigins: フィード内容が空でした');
     return t;
   },
   async url => {
     const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
     if(!r.ok) throw new Error(`corsproxy HTTP ${r.status}`);
-    return await r.text();
+    const t = await r.text();
+    if(!looksLikeFeed(t)) throw new Error('corsproxy: フィード内容が空でした');
+    return t;
   },
   async url => {
     const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
     if(!r.ok) throw new Error(`rss2json HTTP ${r.status}`);
     const j = await r.json();
     if(j.status !== 'ok') throw new Error('rss2json: ' + (j.message||'error'));
+    if(!Array.isArray(j.items) || !j.items.length) throw new Error('rss2json: フィード内容が空でした');
     return {rss2json: j};
   },
   async url => {
     const r = await fetch(`https://feedproxy.google.com/${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
     if(!r.ok) throw new Error(`feedproxy HTTP ${r.status}`);
-    return await r.text();
+    const t = await r.text();
+    if(!looksLikeFeed(t)) throw new Error('feedproxy: フィード内容が空でした');
+    return t;
   },
 ];
 const PROXY_NAMES = ['allorigins', 'corsproxy', 'rss2json', 'feedproxy'];
@@ -76,7 +90,9 @@ let lastProxyAttempts = [];
 async function fetchDirect(url){
   const r = await fetch(url, {signal:AbortSignal.timeout(8000), mode:'cors'});
   if(!r.ok) throw new Error(`direct HTTP ${r.status}`);
-  return await r.text();
+  const text = await r.text();
+  if(!looksLikeFeed(text)) throw new Error('direct: フィード内容が空でした');
+  return text;
 }
 
 async function fetchRSSRaw(url){
