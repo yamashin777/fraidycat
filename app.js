@@ -3154,11 +3154,13 @@ async function addFollow(){
         url = resolved;
       } else {
         if(btn){ btn.textContent = orig; btn.disabled = false; }
+        addFetchLog({id:null, name: name || url, ok:false, error:'RSSフィードを見つけられませんでした（登録時）', stage:'add'});
         alert('このURLからRSSフィードを見つけられませんでした。\nチャンネルページの「/channel/UC...」形式のURL、またはRSS URLを直接入力してください。');
         return;
       }
     }catch(e){
       if(btn){ btn.textContent = orig; btn.disabled = false; }
+      addFetchLog({id:null, name: name || url, ok:false, error:'RSS検索に失敗（登録時）: '+e.message, stage:'add'});
       alert('RSS検索に失敗しました: ' + e.message);
       return;
     }
@@ -3171,16 +3173,19 @@ async function addFollow(){
     const btn = document.querySelector('.btn-ok');
     const orig = btn ? btn.textContent : '';
     if(btn){ btn.textContent = '確認中…'; btn.disabled = true; }
+    const preCheckStart = Date.now();
     try{
       const raw = await fetchRSSRaw(url);
       const {posts} = parseRSS(raw);
       if(!posts.length){
         if(btn){ btn.textContent = orig; btn.disabled = false; }
+        addFetchLog({id:null, name: name || url, ok:false, proxy:lastUsedProxy, error:'記事を1件も取得できませんでした（登録時）', ms:Date.now()-preCheckStart, attempts:lastProxyAttempts.slice(), stage:'add'});
         alert('このURLからは記事を1件も取得できませんでした。\nURLが正しいかご確認のうえ、修正して登録してください。\n\n' + url);
         return;
       }
     }catch(e){
       if(btn){ btn.textContent = orig; btn.disabled = false; }
+      addFetchLog({id:null, name: name || url, ok:false, proxy:lastUsedProxy, error:'登録時の取得エラー: '+e.message, ms:Date.now()-preCheckStart, attempts:lastProxyAttempts.slice(), stage:'add'});
       alert('このURLの取得に失敗しました: ' + e.message + '\nURLが正しいかご確認のうえ、修正して登録してください。\n\n' + url);
       return;
     }
