@@ -155,10 +155,22 @@ async function runBackgroundRefreshTick() {
         ...p,
         date: p.date instanceof Date ? p.date.toISOString() : (p.date || null),
       }));
-      const update = { id: f.id, posts: normPosts, lastFetched: Date.now(), error: null };
+      // 取得・パース自体は成功したが0件だった場合、そのままposts:を含めて
+      // マージすると、プロキシ側の一時的な不具合等で既存の投稿一覧が消えて
+      // しまう（app.js側のdoFetch()と同じ問題）。直前まで投稿があったのに
+      // 今回だけ0件、という場合はpostsキーをupdateに含めないことで、
+      // 後段のマージ（{...f, ...r}）が既存のf.postsをそのまま残すようにする。
+      const prevPosts = Array.isArray(f.posts) ? f.posts : [];
+      const emptyButHadPosts = normPosts.length === 0 && prevPosts.length > 0;
+      const update = { id: f.id, lastFetched: Date.now(), error: null };
+      if (!emptyButHadPosts) update.posts = normPosts;
       if (parsed.feedTitle && f.name === f.url) update.name = parsed.feedTitle;
       results.push(update);
-      await addBgFetchLog({ id: f.id, name: f.name, ok: true, count: parsed.posts.length, ms: Date.now() - startAt });
+      if (emptyButHadPosts) {
+        await addBgFetchLog({ id: f.id, name: f.name, ok: false, error: `0件のため既存の${prevPosts.length}件を保持`, ms: Date.now() - startAt });
+      } else {
+        await addBgFetchLog({ id: f.id, name: f.name, ok: true, count: normPosts.length, ms: Date.now() - startAt });
+      }
     } catch (e) {
       results.push({ id: f.id, error: `取得エラー: ${e.message}` });
       await addBgFetchLog({ id: f.id, name: f.name, ok: false, error: String(e.message || e), ms: Date.now() - startAt });

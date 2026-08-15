@@ -932,8 +932,15 @@ async function doFetch(f){
     const raw = await fetchRSSRaw(f.url);
     const {feedTitle, posts} = parseRSS(raw);
     // 久しぶり更新の検出: 取得前の最新動画リンクを控える
-    const prevLatestLink = (f.posts && f.posts[0]) ? f.posts[0].link : null;
-    f.posts = posts;
+    const prevPosts = f.posts || [];
+    const prevLatestLink = prevPosts[0] ? prevPosts[0].link : null;
+    // 取得・パース自体は成功したが記事が0件だった場合、そのまま上書きすると
+    // プロキシ側の一時的な不具合（空レスポンス等）で既存の投稿一覧が消えてしまう。
+    // 直前まで投稿があったのに今回だけ0件、というのは「動画が全部消えた」より
+    // 「取得が一時的に不完全だった」可能性の方がはるかに高いため、その場合は
+    // 既存のposts一覧を保持し、取得時刻・エラー状態のみ更新する。
+    const emptyButHadPosts = posts.length === 0 && prevPosts.length > 0;
+    if(!emptyButHadPosts) f.posts = posts;
     f.lastFetched = Date.now();
     f.error = null;
     if(hadError){
@@ -954,7 +961,9 @@ async function doFetch(f){
         }
       }
     }catch(e){}
-    addFetchLog({id:f.id, name:f.name, ok:true, proxy:lastUsedProxy, count:posts.length, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice(), latestPub:(posts[0]&&posts[0].date)?new Date(posts[0].date).getTime():null, subs:f.subscriberCount!=null?f.subscriberCount:null});
+    addFetchLog(emptyButHadPosts
+      ? {id:f.id, name:f.name, ok:false, proxy:lastUsedProxy, error:`0件のため既存の${prevPosts.length}件を保持`, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice()}
+      : {id:f.id, name:f.name, ok:true, proxy:lastUsedProxy, count:posts.length, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice(), latestPub:(posts[0]&&posts[0].date)?new Date(posts[0].date).getTime():null, subs:f.subscriberCount!=null?f.subscriberCount:null});
   }catch(e){
     f.error = `取得エラー: ${e.message}`;
     f.posts = f.posts || [];
