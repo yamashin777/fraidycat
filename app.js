@@ -921,6 +921,12 @@ async function doFetch(f){
   currentFetchingName = f.name.length > 20 ? f.name.slice(0, 20) + '…' : f.name;
   updateFetchStatus();
 
+  // 直前までエラー状態だったかどうかを覚えておく。
+  // エラー後に取得が成功した場合、単に静かにエラーが消えるだけだと
+  // 「結局登録できているのかどうか」が分かりづらいため、回復した旨を
+  // 通知する（「エラーが出た＝登録できていない」と思い込んでしまうのを防ぐ）。
+  const hadError = !!f.error;
+
   const fetchStartAt = Date.now();
   try{
     const raw = await fetchRSSRaw(f.url);
@@ -930,6 +936,10 @@ async function doFetch(f){
     f.posts = posts;
     f.lastFetched = Date.now();
     f.error = null;
+    if(hadError){
+      const shortName = f.name.length > 16 ? f.name.slice(0, 16) + '…' : f.name;
+      showToast(`✓ ${shortName} の取得が回復しました（登録できています）`, 4000);
+    }
     if(feedTitle && f.name === f.url) f.name = feedTitle;
     // 新着があり、かつ最新動画とその前の動画の間隔が設定日数以上なら「久しぶり更新」
     try{
