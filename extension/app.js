@@ -2959,7 +2959,8 @@ function tlCard(p, mode){
       ${p.follow.initials}
     </div>
     <div class="tl-body">
-      <div class="tl-channel">${esc(p.follow.name)}</div>
+      <div class="tl-channel" style="cursor:pointer" title="チャンネル設定を開く"
+        data-click="1" data-action="openChannelFromTimeline" data-args="${dargs([p.follow.id])}">${esc(p.follow.name)}</div>
       <div class="tl-title">
         ${dateStr ? `<span class="tl-datetime">${esc(dateStr)}</span>` : ''}
         <a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
@@ -3318,6 +3319,22 @@ function toggleExpand(id){
     });
   }
 }
+
+// 新着順等のタイムライン表示（動画単位）からチャンネル名をクリックした時、
+// そのチャンネルの設定パネルを開く。タイムライン表示にはチャンネル単位の
+// カードが存在しないため、まず「📋 チャンネル順」表示に切り替えてから
+// 該当チャンネルを展開する（検索中であれば検索条件は維持したまま）。
+function openChannelFromTimeline(id){
+  sortMode = 'freq';
+  expanded = id;
+  skipScrollRestore = true;
+  render();
+  requestAnimationFrame(()=>{
+    const card = document.getElementById(`fc-${id}`);
+    if(card) card.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+}
+
 function setTag(t){
   activeTag=t;
   // 特殊フィルター選択時は頻度フィルターをクリア
