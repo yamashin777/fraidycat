@@ -333,7 +333,7 @@ async function loadFromGitHub(){
       try{ localStorage.setItem('fraidycat_revival_threshold_days', String(revivalThresholdDays)); mirrorToChromeStorage({ fraidycat_revival_threshold_days: revivalThresholdDays }); }catch(e){}
     }
 
-    save(false); // localStorageにも保存（GitHub同期はしない）
+    save(false, false); // localStorageにも保存（GitHub同期はしない）。GitHubから届いたデータなのでローカル編集扱いにしない
     return true;
   }catch(e){
     console.warn('GitHub load error:', e);
@@ -600,7 +600,16 @@ function markLocalEdit(){
 }
 
 /* ── Storage ── */
-function save(syncToGh=true){
+// isUserEdit: trueの場合、markLocalEdit()を呼んでGitHub読み込みガードを更新する。
+// タグ変更以外にも「対象外にする」「削除」「一括変更」等、follows配列を直接
+// 変更するあらゆる関数がsave()を呼ぶたびに個別にmarkLocalEdit()を呼ぶのを
+// 忘れないよう、save()側でデフォルトtrueとして一括で保護する（＝呼び忘れによる
+// 「エラーが出た/削除した/対象外にしたのに元に戻る」不具合を防ぐ）。
+// 逆に、doFetch()等の自動・高頻度なバックグラウンド保存はユーザー編集では
+// ないため、呼び出し側で明示的にfalseを渡す（そうしないと編集が無いのに
+// 常にガードがかかり続け、他端末からのGitHub読み込みが永久にブロックされてしまう）。
+function save(syncToGh=true, isUserEdit=true){
+  if(isUserEdit) markLocalEdit();
   try{
     const data = follows.map(f=>({
       ...f,
@@ -976,7 +985,7 @@ async function doFetch(f){
     loadingCount = Math.max(0, loadingCount - 1);
     fetchDone = Math.min(fetchTotal, fetchDone + 1);
     updateFetchStatus();
-    save();
+    save(true, false); // 自動取得結果の保存。ユーザー編集ではないのでGitHub読み込みガードは更新しない
     debouncedRender();
     drainQueue();
     // APIキーがあれば動画時間を自動取得
@@ -2253,7 +2262,7 @@ async function fetchDurationsForFollow(f){
       const s = dur.match(/(\d+)S/); if(s) sec += parseInt(s[1]);
       x.post.duration = sec > 0 ? sec : -1;
     });
-    save();
+    save(true, false); // 自動取得（毎回のRSS取得後に付随して走る）のためユーザー編集扱いにしない
     debouncedRender();
   }catch(e){}
 }
@@ -3530,7 +3539,7 @@ async function fetchIconForFollow(f){
     if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
     if(iconUrl){
       f.iconUrl = iconUrl;
-      save();
+      save(true, false); // 自動取得（毎回のRSS取得後に付随して走る）のためユーザー編集扱いにしない
       // アバターを即時更新
       const avatarEl = document.querySelector(`#fc-${f.id} .fc-avatar img`);
       if(avatarEl){ avatarEl.src = iconUrl; }
@@ -4104,7 +4113,7 @@ async function refetchScheduledStatuses(){
       });
     }catch(e){ /* 通信エラー時は次の周期で再試行 */ }
   }
-  save();
+  save(true, false); // 1分ごとの自動チェックのためユーザー編集扱いにしない
   debouncedRender();
 }
 
@@ -4191,7 +4200,7 @@ async function reconcileFromChromeStorage(){
       }
     });
     if(changed){
-      save(false);
+      save(false, false); // バックグラウンド取得結果の取り込みなのでユーザー編集扱いにしない
       render();
     }
   }catch(e){ console.warn('chrome.storage.localからの取り込みに失敗:', e); }
@@ -4293,10 +4302,10 @@ setTimeout(async ()=>{
         const subCount = itemMap[chId]?.statistics?.subscriberCount;
         if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
       });
-      save(false); // ループ中はlocalStorageのみ
+      save(false, false); // ループ中はlocalStorageのみ。起動時の自動取得なのでユーザー編集扱いにしない
       if(i+CHUNK < needFetch.length) await new Promise(r=>setTimeout(r,300));
     }catch(e){ break; }
   }
   debouncedRender();
-  save(); // 完了後に1回だけGitHub同期
+  save(true, false); // 完了後に1回だけGitHub同期。起動時の自動取得なのでユーザー編集扱いにしない
 }, 5000);
