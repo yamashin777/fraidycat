@@ -169,8 +169,9 @@ function showTextExportModal(title, text, filename){
     <div class="modal" style="max-width:560px">
       <h2>${esc(title)}</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
-        下のボタンでコピーするか、リンクを長押し→「リンク先のファイルをダウンロード」で保存できます。<br>
-        うまくいかない場合は、下のテキスト欄をタップすると全選択されるので、手動でコピーしてください。
+        下のボタンでコピーを試すか、確実な方法として下のテキスト欄をタップ（全選択されます）→
+        指を離さず長押し→「コピー」を選んでください。<br>
+        リンクを長押し→「リンク先のファイルをダウンロード」でファイル保存もできます。
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn-ok" data-click="1" data-action="copyTextExportArea" data-args='["@el"]'>クリップボードにコピー</button>
@@ -189,21 +190,28 @@ function showTextExportModal(title, text, filename){
     </div>
   </div>`;
 }
+// navigator.clipboard.writeText()はPromiseベースで、一部のiOSブラウザ
+// （Braveなど）では許可待ちのまま解決も失敗もせず固まることがあり、
+// 「押しても反応が分からない」原因になっていた。ここでは同期的に結果が
+// 分かるdocument.execCommand('copy')のみを使い、戻り値で成否を正確に
+// 判定した上で、ボタンの文字だけでなくトースト通知でもはっきり伝える。
 function copyTextExportArea(btn){
   const ta = document.getElementById('textExportArea');
   if(!ta) return;
-  const text = ta.value;
-  const done = ()=>{ const o=btn.textContent; btn.textContent='コピーしました'; setTimeout(()=>btn.textContent=o,1500); };
+  ta.focus();
   ta.select();
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(done).catch(()=>{
-      try{ document.execCommand('copy'); }catch(e){}
-      done();
-    });
+  try{ ta.setSelectionRange(0, ta.value.length); }catch(e){} // iOS系で select() だけだと選択されない場合があるため
+  let ok = false;
+  try{ ok = document.execCommand('copy'); }catch(e){ ok = false; }
+  const orig = btn.textContent;
+  if(ok){
+    btn.textContent = '✓ コピーしました';
+    showToast('クリップボードにコピーしました', 2500);
   } else {
-    try{ document.execCommand('copy'); }catch(e){}
-    done();
+    btn.textContent = '✕ コピー失敗';
+    showToast('自動コピーに失敗しました。テキスト欄を長押しして手動でコピーしてください', 4500);
   }
+  setTimeout(()=>{ btn.textContent = orig; }, 1800);
 }
 
 // ログをJSON形式でエクスポート（解析ツール用）
@@ -2822,11 +2830,22 @@ function closeDrawer(){
    縦スクロールを誤って妨げないよう、横方向の動きが縦方向より明確に
    大きい場合のみスワイプとして扱う。また、スワイプが成立した場合は
    （既存のタップ用の委任リスナーがtouchendで誤発火しないよう）
-   captureフェーズでイベントの伝播を止める。 */
+   captureフェーズでイベントの伝播を止める。
+
+   スマホを片手で持って親指で操作する場合、親指の付け根（右下付近）を
+   支点にした弧を描く動きになるため、「まっすぐ上」に動かしたつもりでも
+   軌跡は右上方向にずれやすい。これを単純に「横方向が縦方向より大きければ
+   横スワイプ」と判定すると、上方向スクロールのつもりが誤って横スワイプ
+   （メニューを開く／閉じる）と判定されてしまう。これを防ぐため、
+   ①判定を始めるまでの遊び（DEADZONE）を広めに取り、②横方向の動きが
+   縦方向よりも明確に（AXIS_RATIO倍以上）大きい場合のみ横スワイプと
+   判定するようにして、弧を描く動きによる誤判定を抑えている。 */
 (function(){
   const EDGE_ZONE = 24;       // 画面右端からこの範囲内で始まったタッチのみ「開く」対象にする
   const OPEN_THRESHOLD = 60;  // これ以上左へ動いたら開く
   const CLOSE_THRESHOLD = 70; // これ以上右へドラッグしたら閉じる
+  const DEADZONE = 18;        // 判定を始めるまでの遊び（片手操作の弧による初期ぶれを吸収）
+  const AXIS_RATIO = 1.8;     // 横方向が縦方向のこの倍数を超えて初めて横スワイプと判定
   let startX = null, startY = null, tracking = false, mode = null; // mode: 'open' | 'close'
   let drawerEl = null;
 
@@ -2856,8 +2875,10 @@ function closeDrawer(){
     const dx = t.clientX - startX;
     const dy = t.clientY - startY;
     if(!tracking){
-      if(Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      if(Math.abs(dx) <= Math.abs(dy)){ mode = null; return; } // 縦方向優勢ならスクロールに譲る
+      if(Math.abs(dx) < DEADZONE && Math.abs(dy) < DEADZONE) return;
+      // 横方向が縦方向よりAXIS_RATIO倍以上大きい場合のみ横スワイプとして確定させる。
+      // 片手操作の弧による初期ぶれ程度では横スワイプと判定されないようにするため。
+      if(Math.abs(dx) <= Math.abs(dy) * AXIS_RATIO){ mode = null; return; } // 縦方向優勢ならスクロールに譲る
       tracking = true;
     }
     if(mode === 'close' && drawerEl){
