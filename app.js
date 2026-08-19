@@ -220,6 +220,12 @@ function exportFetchLog(){
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
   const fname = `fraidycat_log_${new Date().toISOString().slice(0,10)}.json`;
   if(isIOS){
+    // 取得ログモーダル（#logModal）はdocument.bodyに直接追加された別要素で、
+    // #modalContainerより後に存在するため常に手前に重なって表示される。
+    // 閉じずにshowTextExportModal()（#modalContainerに描画）を開くと、
+    // 新しいモーダルが取得ログモーダルの「裏」に隠れて見えなくなって
+    // しまうため、先に取得ログモーダルを閉じてから開く。
+    closeLogModal();
     showTextExportModal(`取得ログ（${fetchLog.length}件）`, data, fname);
     return;
   }
