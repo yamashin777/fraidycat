@@ -217,26 +217,17 @@ function copyTextExportArea(btn){
 // ログをJSON形式でエクスポート（解析ツール用）
 function exportFetchLog(){
   const data = JSON.stringify(fetchLog, null, 2);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
   const fname = `fraidycat_log_${new Date().toISOString().slice(0,10)}.json`;
-  if(isIOS){
-    // 取得ログモーダル（#logModal）はdocument.bodyに直接追加された別要素で、
-    // #modalContainerより後に存在するため常に手前に重なって表示される。
-    // 閉じずにshowTextExportModal()（#modalContainerに描画）を開くと、
-    // 新しいモーダルが取得ログモーダルの「裏」に隠れて見えなくなって
-    // しまうため、先に取得ログモーダルを閉じてから開く。
-    closeLogModal();
-    showTextExportModal(`取得ログ（${fetchLog.length}件）`, data, fname);
-    return;
-  }
-  const blob = new Blob([data], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = fname;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 1000);
-  showToast(`ログをエクスポート（${fetchLog.length}件）`);
+  // 以前はnavigator.userAgent等でiOS判定して分岐していたが、Braveなど一部
+  // ブラウザはプライバシー保護のためUser-Agentを偽装・簡略化することがあり、
+  // 判定が外れて「本来はモーダルを開くべきなのに、動作しないダウンロードの
+  // ままになる」不具合につながっていた。判定に頼らず、常に確実なモーダル
+  // （コピーボタン・手動選択・ファイルリンクの3通りの手段を持つ）を使う。
+  // 取得ログモーダル（#logModal）はdocument.bodyに直接追加された別要素で、
+  // #modalContainerより後に存在するため常に手前に重なって表示される。
+  // 閉じずに開くと裏に隠れて見えなくなるため、先に閉じてから開く。
+  closeLogModal();
+  showTextExportModal(`取得ログ（${fetchLog.length}件）`, data, fname);
 }
 
 const COLORS = [
@@ -596,23 +587,11 @@ function renderGhSyncLogSection(){
 // 同期ログをJSONでエクスポート（他人と共有・後から解析するため）
 function exportGhSyncLog(){
   const data = JSON.stringify(ghSyncLog, null, 2);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
   const fname = `fraidycat_gh_sync_log_${new Date().toISOString().slice(0,10)}.json`;
-  if(isIOS){
-    // クリップボードAPIのみに頼ると、Brave等で許可待ちのままPromiseが解決せず
-    // 「ボタンを押しても何も起きない」ことがあったため、内容を直接表示する
-    // モーダル（showTextExportModal）に変更した。
-    showTextExportModal(`GitHub同期ログ（${ghSyncLog.length}件）`, data, fname);
-    return;
-  }
-  const blob = new Blob([data], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = fname;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 1000);
-  showToast(`同期ログをエクスポート（${ghSyncLog.length}件）`);
+  // User-Agent判定に頼らず、常に確実なモーダル（showTextExportModal）を使う
+  // （Brave等一部ブラウザはUser-Agentを偽装・簡略化することがあり、
+  // 判定が外れて動作しないダウンロードのままになる不具合につながっていた）。
+  showTextExportModal(`GitHub同期ログ（${ghSyncLog.length}件）`, data, fname);
 }
 
 async function applyGhSettings(){
@@ -4120,24 +4099,11 @@ function exportJSON(){
     }))
   };
   const json = JSON.stringify(data, null, 2);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
-
-  if(isIOS){
-    // iOS/iPadOSはダウンロードが不安定なため、画面表示してコピー保存できるようにする
-    showExportModal(json);
-    return;
-  }
-
-  const blob = new Blob([json], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `fraidycat_${new Date().toISOString().slice(0,10)}.json`;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 2000);
+  // User-Agent判定でiOS/デスクトップを分岐していたが、Brave等一部ブラウザは
+  // プライバシー保護のためUser-Agentを偽装・簡略化することがあり、判定が
+  // 外れて「本来はモーダルを開くべきなのに動作しないダウンロードのまま」に
+  // なる不具合につながっていた。判定に頼らず、常に確実なモーダルを使う。
+  showExportModal(json);
 }
 
 // iOS向け: JSONを画面表示してコピー/ファイル保存できるモーダル
@@ -4170,18 +4136,26 @@ function showExportModal(json){
   </div>`;
 }
 
+// navigator.clipboard.writeText()（Promise）は一部のiOSブラウザで許可待ちの
+// まま解決も失敗もせず固まることがあるため使わず、同期的に成否が分かる
+// document.execCommand('copy')のみを使う（copyTextExportAreaと同じ方式）。
 function copyExportJson(btn){
   const ta = document.getElementById('exportJsonArea');
   if(!ta) return;
-  const text = ta.value;
-  const done = ()=>{ const o=btn.textContent; btn.textContent='コピーしました'; setTimeout(()=>btn.textContent=o,1500); };
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(done).catch(()=>{
-      ta.select(); document.execCommand('copy'); done();
-    });
+  ta.focus();
+  ta.select();
+  try{ ta.setSelectionRange(0, ta.value.length); }catch(e){}
+  let ok = false;
+  try{ ok = document.execCommand('copy'); }catch(e){ ok = false; }
+  const orig = btn.textContent;
+  if(ok){
+    btn.textContent = '✓ コピーしました';
+    showToast('クリップボードにコピーしました', 2500);
   } else {
-    ta.select(); document.execCommand('copy'); done();
+    btn.textContent = '✕ コピー失敗';
+    showToast('自動コピーに失敗しました。テキスト欄を長押しして手動でコピーしてください', 4500);
   }
+  setTimeout(()=>{ btn.textContent = orig; }, 1800);
 }
 
 function importJSON(event){
