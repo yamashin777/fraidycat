@@ -249,6 +249,23 @@ const GH_PULL_PROTECT_MS = 20000; // アップロードのデバウンス(最大
 let ghLastPullAt = parseInt(localStorage.getItem('fraidycat_gh_last_pull_at'), 10) || 0;
 const GH_RESYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24時間
 
+// GitHub同期（読み込み・保存）の履歴ログ。他端末（スマホ等）で同期がうまく
+// いかない時、その場で状況を伝えてもらう代わりに、後からこのログを
+// エクスポート／画面表示して確認できるようにするためのもの
+// （取得ログ fetchLog と同じ仕組みをGitHub同期用に用意したもの）。
+let ghSyncLog = [];
+try{
+  const savedGhSyncLog = localStorage.getItem('fraidycat_gh_sync_log');
+  if(savedGhSyncLog) ghSyncLog = JSON.parse(savedGhSyncLog) || [];
+}catch(e){ ghSyncLog = []; }
+function addGhSyncLog(entry){
+  entry.at = Date.now();
+  ghSyncLog.unshift(entry);
+  if(ghSyncLog.length > 100) ghSyncLog = ghSyncLog.slice(0, 100);
+  try{ localStorage.setItem('fraidycat_gh_sync_log', JSON.stringify(ghSyncLog)); }catch(e){}
+  mirrorToChromeStorage({ fraidycat_gh_sync_log: ghSyncLog });
+}
+
 function saveGhSettings(token, repo, path, enabled){
   ghToken = token; ghRepo = repo; ghPath = path; ghSyncEnabled = enabled;
   localStorage.setItem('fraidycat_gh_token',  token);
@@ -263,7 +280,10 @@ function saveGhSettings(token, repo, path, enabled){
 
 /* GitHubからデータを読み込む */
 async function loadFromGitHub(){
-  if(!ghSyncEnabled || !ghToken || !ghRepo) return false;
+  if(!ghSyncEnabled || !ghToken || !ghRepo){
+    addGhSyncLog({type:'pull', ok:false, reason:'同期が無効、またはトークン/リポジトリ未設定'});
+    return false;
+  }
   // 直近の編集がまだGitHubにアップロードされていない可能性がある間は、
   // 古いGitHub側データで上書きしてしまわないよう読み込みをスキップする。
   // （タグ変更などの編集直後にページを再読み込みすると、アップロードの
@@ -271,6 +291,7 @@ async function loadFromGitHub(){
   // 編集が消えて見える不具合があったため）
   if(Date.now() - lastLocalEditAt < GH_PULL_PROTECT_MS){
     console.warn('直近の編集を保護するためGitHub読み込みをスキップしました');
+    addGhSyncLog({type:'pull', ok:false, reason:'直近の編集保護によりスキップ', localCount:follows.length});
     return false;
   }
   try{
@@ -278,7 +299,7 @@ async function loadFromGitHub(){
       `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
       {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'}}
     );
-    if(res.status === 404) return false; // ファイルがまだない
+    if(res.status === 404){ addGhSyncLog({type:'pull', ok:false, reason:'ファイルが存在しない(404)'}); return false; } // ファイルがまだない
     if(!res.ok) throw new Error(`GitHub API ${res.status}`);
     const json = await res.json();
     ghSha = json.sha;
@@ -290,16 +311,21 @@ async function loadFromGitHub(){
     // 新形式（{follows, tagOrder, revivalHistory, revivalThresholdDays}）と旧形式（配列）の両対応
     const followsData = Array.isArray(decoded) ? decoded : decoded.follows;
     const tagOrderData = decoded.tagOrder || null;
-    if(!Array.isArray(followsData)) return false;
+    if(!Array.isArray(followsData)){ addGhSyncLog({type:'pull', ok:false, reason:'followsフィールドが配列でない'}); return false; }
 
     // 文字化けチェック（壊れたデータでローカルを上書きしないため）
     const firstName = followsData[0]?.name || '';
     const hasGarbled = /[\uFFFD\u0000-\u001F]/.test(firstName) ||
       (firstName.length > 0 && !/[\u0020-\u007E\u3000-\u9FFF\uF900-\uFAFF]/.test(firstName));
-    if(hasGarbled){ console.warn('GitHub data appears garbled, skipping load'); return false; }
+    if(hasGarbled){
+      console.warn('GitHub data appears garbled, skipping load');
+      addGhSyncLog({type:'pull', ok:false, reason:'データが文字化けしているためスキップ', remoteCount:followsData.length});
+      return false;
+    }
     // GitHub側の件数がローカルより大幅に少ない場合は、データ消失を避けるためローカルを優先する
     if(follows.length > 0 && followsData.length < follows.length * 0.8){
       console.warn(`GitHub(${followsData.length}) << Local(${follows.length}), skipping load`);
+      addGhSyncLog({type:'pull', ok:false, reason:'GitHub側の件数が大幅に少ないためスキップ', remoteCount:followsData.length, localCount:follows.length});
       return false;
     }
 
@@ -344,9 +370,11 @@ async function loadFromGitHub(){
     save(false, false); // localStorageにも保存（GitHub同期はしない）。GitHubから届いたデータなのでローカル編集扱いにしない
     ghLastPullAt = Date.now();
     try{ localStorage.setItem('fraidycat_gh_last_pull_at', String(ghLastPullAt)); }catch(e){}
+    addGhSyncLog({type:'pull', ok:true, remoteCount:followsData.length, localCountBefore:follows.length});
     return true;
   }catch(e){
     console.warn('GitHub load error:', e);
+    addGhSyncLog({type:'pull', ok:false, reason:e.message});
     return false;
   }
 }
@@ -409,6 +437,7 @@ async function saveToGitHub(retryCount){
         return saveToGitHub(retryCount+1);
       }
       setStatus('warn', `⚠ GitHub保存失敗: ${err.message||res.status}`);
+      addGhSyncLog({type:'push', ok:false, reason:err.message||`HTTP ${res.status}`, count:data.length});
       return;
     }
     const json = await res.json();
@@ -416,9 +445,11 @@ async function saveToGitHub(retryCount){
     ghLastSaveAt = Date.now();
     console.log('GitHub save OK, sha:', ghSha);
     setStatus('ok', `GitHub同期完了: ${new Date().toLocaleTimeString('ja-JP')}`);
+    addGhSyncLog({type:'push', ok:true, count:data.length});
   }catch(e){
     console.warn('GitHub save error:', e);
     setStatus('warn', `⚠ GitHub保存エラー: ${e.message}`);
+    addGhSyncLog({type:'push', ok:false, reason:e.message});
   }finally{
     ghSaving = false;
     // 保存中に来た要求があれば、デバウンス経由で1回だけ再保存（連続コミット防止）
@@ -462,8 +493,65 @@ function openGhSettingsModal(){
         <button class="btn-cancel" data-click="1" data-action="closeModalContainer">キャンセル</button>
         <button class="btn-ok" data-click="1" data-action="applyGhSettings">保存して同期テスト</button>
       </div>
+      ${renderGhSyncLogSection()}
     </div>
   </div>`;
+}
+
+// 直近のGitHub同期（読み込み・保存）の履歴を表示する。他端末（スマホ等）で
+// 同期がうまくいかない時、その場で状況を伝えてもらう代わりに、この端末に
+// 残っているログを見て（またはエクスポートしてもらって）原因を確認できる
+// ようにするためのもの。
+function renderGhSyncLogSection(){
+  if(!ghSyncLog.length) return '';
+  const rows = ghSyncLog.slice(0, 15).map(l=>{
+    const t = new Date(l.at);
+    const time = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+    const typeLabel = l.type === 'push' ? '↑保存' : '↓読込';
+    const icon = l.ok ? '✓' : '✕';
+    const color = l.ok ? '#0A8' : '#D33';
+    let detail;
+    if(l.ok){
+      detail = l.type === 'push' ? `${l.count}件アップロード` : `${l.remoteCount}件取得`;
+    } else {
+      detail = esc(l.reason || '失敗');
+    }
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid var(--border)">
+      <span style="color:${color};flex-shrink:0">${icon}</span>
+      <span style="color:var(--text-faint);flex-shrink:0;font-family:'DM Mono',monospace">${time}</span>
+      <span style="flex-shrink:0">${typeLabel}</span>
+      <span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${detail}</span>
+    </div>`;
+  }).join('');
+  return `
+    <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:500;color:var(--text-muted)">同期ログ（直近${Math.min(15,ghSyncLog.length)}件）</span>
+        <button class="btn-cancel" style="margin-left:auto;font-size:10px;padding:2px 8px" data-click="1" data-action="exportGhSyncLog">エクスポート</button>
+      </div>
+      <div style="max-height:180px;overflow-y:auto">${rows}</div>
+    </div>`;
+}
+
+// 同期ログをJSONでエクスポート（他人と共有・後から解析するため）
+function exportGhSyncLog(){
+  const data = JSON.stringify(ghSyncLog, null, 2);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const fname = `fraidycat_gh_sync_log_${new Date().toISOString().slice(0,10)}.json`;
+  if(isIOS){
+    const w = window.open('', '_blank');
+    if(w){ w.document.write(`<pre style="white-space:pre-wrap;word-break:break-all;font-size:11px">${data.replace(/</g,'&lt;')}</pre>`); }
+    else { prompt('同期ログJSON（コピーしてください）', data); }
+    return;
+  }
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  showToast(`同期ログをエクスポート（${ghSyncLog.length}件）`);
 }
 
 async function applyGhSettings(){
