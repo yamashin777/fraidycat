@@ -157,32 +157,53 @@ function clearFetchLog(){
   if(document.getElementById('logModalBody')) renderLogModal();
 }
 
-// クリップボードへのコピー共通処理。navigator.clipboard.writeTextを優先し、
-// 失敗した場合は非表示textarea＋execCommand('copy')にフォールバックする。
-// それも使えない環境向けに、最終手段としてonFailコールバックを呼べるようにしている
-// （以前はiOSでwindow.open()＋document.writeやprompt()に「手動でコピーして
-// ください」と表示していたが、ポップアップブロックで失敗したりコピー操作が
-// 分かりにくく、「コピーできない」という不具合報告があったため導入）。
-function copyTextToClipboard(text, onSuccess, onFail){
+// テキストをエクスポートする際の共通モーダル。iOSはクリップボードAPIの
+// 挙動が不安定（Brave等で許可待ちのままPromiseが解決せず「押しても何も
+// 起きない」ことがある）ため、常に成功する保証がない自動コピーだけに頼らず、
+// 内容を直接画面に表示し、タップして手動でも選択・コピーできるようにする。
+function showTextExportModal(title, text, filename){
+  const blob = new Blob([text], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  document.getElementById('modalContainer').innerHTML = `
+  <div class="modal-backdrop" data-click="1" data-action="closeModalContainerIfBackdrop" data-args='["@el","@evt"]'>
+    <div class="modal" style="max-width:560px">
+      <h2>${esc(title)}</h2>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
+        下のボタンでコピーするか、リンクを長押し→「リンク先のファイルをダウンロード」で保存できます。<br>
+        うまくいかない場合は、下のテキスト欄をタップすると全選択されるので、手動でコピーしてください。
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn-ok" data-click="1" data-action="copyTextExportArea" data-args='["@el"]'>クリップボードにコピー</button>
+        <a class="btn-ok" href="${url}" download="${filename}"
+           style="text-decoration:none;display:inline-flex;align-items:center"
+           target="_blank" rel="noopener">ファイルとして開く</a>
+      </div>
+      <textarea id="textExportArea" readonly
+        style="width:100%;height:240px;font-family:'DM Mono',monospace;font-size:11px;
+        border:1px solid var(--border-strong);border-radius:8px;padding:8px;
+        background:var(--bg);color:var(--text);resize:vertical;-webkit-user-select:all;user-select:all"
+        data-click="1" data-action="selectInputText" data-args='["@el"]'>${esc(text)}</textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" data-click="1" data-action="closeModalContainer">閉じる</button>
+      </div>
+    </div>
+  </div>`;
+}
+function copyTextExportArea(btn){
+  const ta = document.getElementById('textExportArea');
+  if(!ta) return;
+  const text = ta.value;
+  const done = ()=>{ const o=btn.textContent; btn.textContent='コピーしました'; setTimeout(()=>btn.textContent=o,1500); };
+  ta.select();
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(()=>{ if(onSuccess) onSuccess(); }).catch(()=>{
-      try{
-        const ta = document.createElement('textarea');
-        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
-        document.body.appendChild(ta); ta.select();
-        document.execCommand('copy'); document.body.removeChild(ta);
-        if(onSuccess) onSuccess();
-      }catch(e){ if(onFail) onFail(); }
+    navigator.clipboard.writeText(text).then(done).catch(()=>{
+      try{ document.execCommand('copy'); }catch(e){}
+      done();
     });
-    return;
+  } else {
+    try{ document.execCommand('copy'); }catch(e){}
+    done();
   }
-  try{
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
-    document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-    if(onSuccess) onSuccess();
-  }catch(e){ if(onFail) onFail(); }
 }
 
 // ログをJSON形式でエクスポート（解析ツール用）
@@ -191,11 +212,7 @@ function exportFetchLog(){
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
   const fname = `fraidycat_log_${new Date().toISOString().slice(0,10)}.json`;
   if(isIOS){
-    copyTextToClipboard(data, ()=>{
-      showToast(`ログをクリップボードにコピーしました（${fetchLog.length}件）。メモ帳等に貼り付けてください`, 4000);
-    }, ()=>{
-      prompt('ログJSON（コピーしてください）', data);
-    });
+    showTextExportModal(`取得ログ（${fetchLog.length}件）`, data, fname);
     return;
   }
   const blob = new Blob([data], {type:'application/json'});
@@ -568,17 +585,10 @@ function exportGhSyncLog(){
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
   const fname = `fraidycat_gh_sync_log_${new Date().toISOString().slice(0,10)}.json`;
   if(isIOS){
-    // 以前はwindow.open()＋document.writeやprompt()で「手動でコピーしてください」
-    // としていたが、ポップアップブロックでwindow.openが失敗したり、prompt()の
-    // 入力欄からのコピー操作が分かりにくく「コピーできない」という不具合報告が
-    // あったため、クリップボードへ直接コピーする方式に変更（コピーボタン等で
-    // 使っているものと同じ仕組み）。
-    copyTextToClipboard(data, ()=>{
-      showToast(`同期ログをクリップボードにコピーしました（${ghSyncLog.length}件）。メモ帳等に貼り付けてください`, 4000);
-    }, ()=>{
-      // クリップボードAPIも使えない場合の最終手段としてプロンプトを残す
-      prompt('同期ログJSON（コピーしてください）', data);
-    });
+    // クリップボードAPIのみに頼ると、Brave等で許可待ちのままPromiseが解決せず
+    // 「ボタンを押しても何も起きない」ことがあったため、内容を直接表示する
+    // モーダル（showTextExportModal）に変更した。
+    showTextExportModal(`GitHub同期ログ（${ghSyncLog.length}件）`, data, fname);
     return;
   }
   const blob = new Blob([data], {type:'application/json'});
