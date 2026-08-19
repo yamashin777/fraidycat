@@ -157,16 +157,45 @@ function clearFetchLog(){
   if(document.getElementById('logModalBody')) renderLogModal();
 }
 
+// クリップボードへのコピー共通処理。navigator.clipboard.writeTextを優先し、
+// 失敗した場合は非表示textarea＋execCommand('copy')にフォールバックする。
+// それも使えない環境向けに、最終手段としてonFailコールバックを呼べるようにしている
+// （以前はiOSでwindow.open()＋document.writeやprompt()に「手動でコピーして
+// ください」と表示していたが、ポップアップブロックで失敗したりコピー操作が
+// 分かりにくく、「コピーできない」という不具合報告があったため導入）。
+function copyTextToClipboard(text, onSuccess, onFail){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>{ if(onSuccess) onSuccess(); }).catch(()=>{
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+        if(onSuccess) onSuccess();
+      }catch(e){ if(onFail) onFail(); }
+    });
+    return;
+  }
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    if(onSuccess) onSuccess();
+  }catch(e){ if(onFail) onFail(); }
+}
+
 // ログをJSON形式でエクスポート（解析ツール用）
 function exportFetchLog(){
   const data = JSON.stringify(fetchLog, null, 2);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
   const fname = `fraidycat_log_${new Date().toISOString().slice(0,10)}.json`;
   if(isIOS){
-    // iOSはダウンロードが不安定なのでモーダルでコピー
-    const w = window.open('', '_blank');
-    if(w){ w.document.write(`<pre style="white-space:pre-wrap;word-break:break-all;font-size:11px">${data.replace(/</g,'&lt;')}</pre>`); }
-    else { prompt('ログJSON（コピーしてください）', data); }
+    copyTextToClipboard(data, ()=>{
+      showToast(`ログをクリップボードにコピーしました（${fetchLog.length}件）。メモ帳等に貼り付けてください`, 4000);
+    }, ()=>{
+      prompt('ログJSON（コピーしてください）', data);
+    });
     return;
   }
   const blob = new Blob([data], {type:'application/json'});
@@ -539,9 +568,17 @@ function exportGhSyncLog(){
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
   const fname = `fraidycat_gh_sync_log_${new Date().toISOString().slice(0,10)}.json`;
   if(isIOS){
-    const w = window.open('', '_blank');
-    if(w){ w.document.write(`<pre style="white-space:pre-wrap;word-break:break-all;font-size:11px">${data.replace(/</g,'&lt;')}</pre>`); }
-    else { prompt('同期ログJSON（コピーしてください）', data); }
+    // 以前はwindow.open()＋document.writeやprompt()で「手動でコピーしてください」
+    // としていたが、ポップアップブロックでwindow.openが失敗したり、prompt()の
+    // 入力欄からのコピー操作が分かりにくく「コピーできない」という不具合報告が
+    // あったため、クリップボードへ直接コピーする方式に変更（コピーボタン等で
+    // 使っているものと同じ仕組み）。
+    copyTextToClipboard(data, ()=>{
+      showToast(`同期ログをクリップボードにコピーしました（${ghSyncLog.length}件）。メモ帳等に貼り付けてください`, 4000);
+    }, ()=>{
+      // クリップボードAPIも使えない場合の最終手段としてプロンプトを残す
+      prompt('同期ログJSON（コピーしてください）', data);
+    });
     return;
   }
   const blob = new Blob([data], {type:'application/json'});
