@@ -2813,6 +2813,84 @@ function closeDrawer(){
   document.body.style.overflow='';
 }
 
+/* ── ドロワーのスワイプ操作（タップだけでなく、指の動きでも開閉できるように）──
+   ドロワーは画面右端に固定され、右へtranslateX(100%)することで隠れている。
+   1) 画面右端（EDGE_ZONE以内）から始まる左スワイプ → ドロワーを開く
+   2) ドロワーが開いている状態で、ドロワー上を右へドラッグ → 指に追従して
+      閉じる方向へ動き、一定距離を超えたら閉じる（離した位置で閉じるか
+      元に戻るかが決まる、ネイティブアプリのような操作感）
+   縦スクロールを誤って妨げないよう、横方向の動きが縦方向より明確に
+   大きい場合のみスワイプとして扱う。また、スワイプが成立した場合は
+   （既存のタップ用の委任リスナーがtouchendで誤発火しないよう）
+   captureフェーズでイベントの伝播を止める。 */
+(function(){
+  const EDGE_ZONE = 24;       // 画面右端からこの範囲内で始まったタッチのみ「開く」対象にする
+  const OPEN_THRESHOLD = 60;  // これ以上左へ動いたら開く
+  const CLOSE_THRESHOLD = 70; // これ以上右へドラッグしたら閉じる
+  let startX = null, startY = null, tracking = false, mode = null; // mode: 'open' | 'close'
+  let drawerEl = null;
+
+  function isDrawerOpen(){
+    const d = document.getElementById('drawer');
+    return !!(d && d.classList.contains('open'));
+  }
+
+  document.addEventListener('touchstart', (e)=>{
+    if(e.touches.length !== 1){ mode = null; return; }
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY; tracking = false; mode = null; drawerEl = null;
+    if(isDrawerOpen()){
+      const d = document.getElementById('drawer');
+      if(d && d.contains(e.target)){
+        mode = 'close';
+        drawerEl = d;
+      }
+    } else if(window.innerWidth - t.clientX <= EDGE_ZONE){
+      mode = 'open';
+    }
+  }, {capture:true, passive:true});
+
+  document.addEventListener('touchmove', (e)=>{
+    if(mode === null || startX === null) return;
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if(!tracking){
+      if(Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      if(Math.abs(dx) <= Math.abs(dy)){ mode = null; return; } // 縦方向優勢ならスクロールに譲る
+      tracking = true;
+    }
+    if(mode === 'close' && drawerEl){
+      if(dx > 0){
+        if(e.cancelable) e.preventDefault();
+        drawerEl.style.transition = 'none';
+        drawerEl.style.transform = `translateX(${Math.min(dx, 280)}px)`;
+      }
+    } else if(mode === 'open'){
+      if(dx < 0 && e.cancelable) e.preventDefault();
+    }
+  }, {capture:true, passive:false});
+
+  document.addEventListener('touchend', (e)=>{
+    if(mode === 'close' && drawerEl){
+      drawerEl.style.transition = '';
+      drawerEl.style.transform = '';
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startX;
+      if(tracking){
+        e.stopPropagation(); // タップ用の委任リスナー（ボタン誤発火）を防ぐ
+        if(dx > CLOSE_THRESHOLD) closeDrawer();
+      }
+    } else if(mode === 'open' && tracking){
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startX;
+      e.stopPropagation();
+      if(dx < -OPEN_THRESHOLD) openDrawer();
+    }
+    startX = null; startY = null; tracking = false; mode = null; drawerEl = null;
+  }, {capture:true});
+})();
+
 let skipScrollRestore = false;
 
 function render(){
