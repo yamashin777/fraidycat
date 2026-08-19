@@ -241,6 +241,14 @@ let ghSaveTimer = null;
 let lastLocalEditAt = parseInt(localStorage.getItem('fraidycat_last_local_edit_at'), 10) || 0;
 const GH_PULL_PROTECT_MS = 20000; // アップロードのデバウンス(最大12秒)より長めに確保
 
+// 直近にGitHubから正常に読み込めた時刻。24時間ごとの自動再同期の判定に使う。
+// setInterval単体だとタブが一定時間バックグラウンドに回された時にブラウザ側で
+// 間引かれ、スマホでは「開きっぱなしでも24時間ごとに同期」が実質機能しない
+// ことがあったため、経過時間ベースでの判定（タブが再度アクティブになった時に
+// 「前回の読み込みから24時間以上経っていないか」をチェックする方式）を併用する。
+let ghLastPullAt = parseInt(localStorage.getItem('fraidycat_gh_last_pull_at'), 10) || 0;
+const GH_RESYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24時間
+
 function saveGhSettings(token, repo, path, enabled){
   ghToken = token; ghRepo = repo; ghPath = path; ghSyncEnabled = enabled;
   localStorage.setItem('fraidycat_gh_token',  token);
@@ -334,6 +342,8 @@ async function loadFromGitHub(){
     }
 
     save(false, false); // localStorageにも保存（GitHub同期はしない）。GitHubから届いたデータなのでローカル編集扱いにしない
+    ghLastPullAt = Date.now();
+    try{ localStorage.setItem('fraidycat_gh_last_pull_at', String(ghLastPullAt)); }catch(e){}
     return true;
   }catch(e){
     console.warn('GitHub load error:', e);
@@ -4271,8 +4281,24 @@ if(ghSyncEnabled && ghToken && ghRepo){
   setTimeout(()=>{ syncPullFromGitHub(true); }, 500);
 }
 // タブを開きっぱなしにしていても、他端末の更新（久しぶり履歴・設定日数など）を
-// 取り込めるよう、24時間ごとに再同期する（起動時の1回だけでは反映されないため）。
-setInterval(()=>{ syncPullFromGitHub(false); }, 24 * 60 * 60 * 1000);
+// 取り込めるよう、前回の読み込みから24時間以上経っていれば再同期する
+// （起動時の1回だけでは反映されないため）。
+// 以前は単純にsetInterval(24時間)で実装していたが、スマホのブラウザは
+// バックグラウンドのタブのタイマーを間引く・停止することがあり、
+// 「開きっぱなしでも24時間ごとに同期」が実質機能しないケースがあった。
+// 経過時間ベースの判定にし、タブが再びアクティブになったタイミング
+// （visibilitychange）でもチェックすることで、スマホでタブを行き来する
+// 使い方でも取りこぼしにくくする。
+function resyncFromGitHubIfStale(){
+  if(!ghSyncEnabled || !ghToken || !ghRepo) return;
+  if(Date.now() - ghLastPullAt > GH_RESYNC_INTERVAL_MS) syncPullFromGitHub(false);
+}
+setInterval(resyncFromGitHubIfStale, 60 * 60 * 1000); // 1時間ごとにチェック（間引かれても次のtickで拾える）
+if(typeof document !== 'undefined'){
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden) resyncFromGitHubIfStale();
+  });
+}
 /* 初回フェッチ: キューに順番に追加（setTimeoutを大量生成しない） */
 if(follows.length){
   const toFetch = follows.filter(f => shouldRefetch(f));
