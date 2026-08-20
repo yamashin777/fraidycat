@@ -348,7 +348,7 @@ async function loadFromGitHub(){
   try{
     const res = await fetch(
       `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
-      {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'}}
+      {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'},cache:'no-store'}
     );
     if(res.status === 404){ addGhSyncLog({type:'pull', ok:false, reason:'ファイルが存在しない(404)'}); return false; } // ファイルがまだない
     if(!res.ok) throw new Error(`GitHub API ${res.status}`);
@@ -366,7 +366,7 @@ async function loadFromGitHub(){
       // サイズ制限のないraw形式で改めて取得する
       const rawRes = await fetch(
         `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
-        {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.raw+json'}}
+        {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.raw+json'},cache:'no-store'}
       );
       if(!rawRes.ok) throw new Error(`GitHub API raw ${rawRes.status}`);
       const text = await rawRes.text();
@@ -467,8 +467,8 @@ async function saveToGitHub(retryCount){
     // 保存前に必ず最新SHAを取得（衝突予防）
     try{
       const head = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
-        {headers:{'Authorization':`token ${ghToken}`}});
-      if(head.ok){ const hj = await head.json(); ghSha = hj.sha; }
+        {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'},cache:'no-store'});
+      if(head.ok){ const hj = await head.json(); if(hj.sha) ghSha = hj.sha; }
     }catch(e){ /* SHA取得失敗時は既存のghShaで試行 */ }
 
     const data = follows.map(f=>({
@@ -494,8 +494,8 @@ async function saveToGitHub(retryCount){
         await new Promise(r=>setTimeout(r, 500));
         try{
           const h2 = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
-            {headers:{'Authorization':`token ${ghToken}`}});
-          if(h2.ok){ const hj2 = await h2.json(); ghSha = hj2.sha; }
+            {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'},cache:'no-store'});
+          if(h2.ok){ const hj2 = await h2.json(); if(hj2.sha) ghSha = hj2.sha; }
         }catch(e){}
         ghSaving = false; // 再帰呼び出しのため一旦解除
         return saveToGitHub(retryCount+1);
