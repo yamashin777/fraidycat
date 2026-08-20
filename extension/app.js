@@ -354,11 +354,24 @@ async function loadFromGitHub(){
     if(!res.ok) throw new Error(`GitHub API ${res.status}`);
     const json = await res.json();
     ghSha = json.sha;
-    // TextDecoderでデコード（TextEncoderで保存したデータに対応）
-    const binStr = atob(json.content.replace(/\n/g,''));
-    const bytes = new Uint8Array(binStr.length);
-    for(let i=0; i<binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
-    const decoded = JSON.parse(new TextDecoder().decode(bytes));
+    let decoded;
+    if(json.content){
+      // 1MB未満: 通常通りbase64デコード（TextDecoderでデコード。TextEncoderで保存したデータに対応）
+      const binStr = atob(json.content.replace(/\n/g,''));
+      const bytes = new Uint8Array(binStr.length);
+      for(let i=0; i<binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+      decoded = JSON.parse(new TextDecoder().decode(bytes));
+    } else {
+      // 1MB以上: GitHubの通常APIはcontentフィールドを返さないため、
+      // サイズ制限のないraw形式で改めて取得する
+      const rawRes = await fetch(
+        `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
+        {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.raw+json'}}
+      );
+      if(!rawRes.ok) throw new Error(`GitHub API raw ${rawRes.status}`);
+      const text = await rawRes.text();
+      decoded = JSON.parse(text);
+    }
     // 新形式（{follows, tagOrder, revivalHistory, revivalThresholdDays}）と旧形式（配列）の両対応
     const followsData = Array.isArray(decoded) ? decoded : decoded.follows;
     const tagOrderData = decoded.tagOrder || null;
