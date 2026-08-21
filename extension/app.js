@@ -3345,10 +3345,15 @@ function renderMain(){
 /* ── Modal ── */
 function openModal(){
   showModal = true;
-  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'6時間',tags:'',memo:'',colorIdx: Math.floor(Math.random()*COLORS.length)};
+  formData = {name:'',url:'',platform:'RSS/ブログ',freq:'6時間',tags:'',memo:'',colorIdx: Math.floor(Math.random()*COLORS.length), markColor:null};
   renderModal();
 }
 function closeModal(){ showModal=false; document.getElementById('modalContainer').innerHTML=''; }
+
+function handleFormMarkSelect(color){
+  formData.markColor = color || null;
+  renderModal();
+}
 
 function renderModal(){
   if(!showModal){document.getElementById('modalContainer').innerHTML='';return;}
@@ -3375,6 +3380,16 @@ function renderModal(){
         <select class="form-select" id="f-freq" data-change="1" data-action="handleFreqSelect" data-args='["@value"]'>
           ${FREQS.map(f=>`<option${f===formData.freq?' selected':''}>${f}</option>`).join('')}
         </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">マーク（任意）</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${Object.entries(MARK_COLORS).map(([key,val])=>`
+            <button type="button" class="mark-color-btn" style="background:${val.border}${formData.markColor===key?`;outline:2px solid ${val.border};outline-offset:2px`:''}"
+              title="${val.label}" data-click="1" data-action="handleFormMarkSelect" data-args='["${key}"]'></button>
+          `).join('')}
+          ${formData.markColor ? `<button type="button" class="mark-clear-btn" data-click="1" data-action="handleFormMarkSelect" data-args='[""]'>解除</button>` : ''}
+        </div>
       </div>
       <div class="form-row">
         <label class="form-label">タグ</label>
@@ -3495,6 +3510,8 @@ async function addFollow(){
     colorIdx: formData.colorIdx,
     initials,
     memo,
+    markColor: formData.markColor || null,
+    favorite: !!formData.markColor,
     posts: [],
     loading: false,
     lastFetched: null,
