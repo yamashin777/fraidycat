@@ -1773,7 +1773,10 @@ function renderFollowCard(f){
           ${rightButtons}
         </div>`;
       }).join('')}
-    </div>` : ''}
+    </div>` : `
+    <div class="fc-preview-empty" style="padding:8px 8px 10px;color:var(--text-faint);font-size:12px">
+      ${f.loading ? '取得中…' : f.error ? '取得エラーです（タップして詳細を確認）' : 'まだ投稿を取得していません（次回の取得をお待ちください）'}
+    </div>`}
     <div class="fc-regdate-popup" id="regdate-popup-${f.id}" style="display:none">
       <span class="fc-freq-label">登録日：</span>
       <input type="date" class="fc-tag-input"
