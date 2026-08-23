@@ -1727,6 +1727,7 @@ function renderFollowCard(f){
           <button class="fc-cal-btn" data-click="1" data-action="toggleRegDateInput" data-args="[${f.id}]" title="登録日">📅</button>
           ${regDateText ? `<span class="fc-regdate-inline" title="登録日">${regDateText}登録</span>` : ''}
           <button class="fc-del" data-click="1" data-action="delFollow" data-args="[${f.id}]" title="削除">✕</button>
+          <span class="fc-top-spacer" style="flex:1;min-width:16px;align-self:stretch" title="タップして開閉"></span>
         </div>
       </div>
     </div>
@@ -1774,8 +1775,20 @@ function renderFollowCard(f){
         </div>`;
       }).join('')}
     </div>` : `
-    <div class="fc-preview-empty" style="padding:8px 8px 10px;color:var(--text-faint);font-size:12px">
-      ${f.loading ? '取得中…' : f.error ? '取得エラーです（タップして詳細を確認）' : 'まだ投稿を取得していません（次回の取得をお待ちください）'}
+    <div class="fc-preview" style="padding:0 8px 2px">
+      <div class="fc-preview-item">
+        <div class="fc-avatar-col">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
+            <div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
+              ${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
+              ${esc(f.initials)}
+            </div>
+          </div>
+        </div>
+        <div class="fc-preview-empty" style="padding:8px 0;color:var(--text-faint);font-size:12px">
+          ${f.loading ? '取得中…' : f.error ? '取得エラーです（タップして詳細を確認）' : 'まだ投稿を取得していません（次回の取得をお待ちください）'}
+        </div>
+      </div>
     </div>`}
     <div class="fc-regdate-popup" id="regdate-popup-${f.id}" style="display:none">
       <span class="fc-freq-label">登録日：</span>
