@@ -1690,32 +1690,37 @@ function renderFollowCard(f){
   // 実際のURLから直接YouTubeかどうかを判定する（fetcher.js等と同じ判定方法）
   const isYoutubeUrl = /youtube\.com|youtu\.be/i.test(f.url || '');
   const nonYoutubeClass = (!markBg && !isYoutubeUrl) ? ' non-youtube' : '';
+  // アイコンをクリックしたらチャンネル本体（YouTube等）を開き、チャンネル名を
+  // クリックしたらパネルを開閉する（アイコン＝コンテンツを見に行く、名前＝設定を開く、
+  // という向きの方が直感的という要望に基づく）。
+  const chId = ytChannelIdFromUrl(f.url);
+  const plId = f.url.match(/playlist_id=([A-Za-z0-9_-]+)/)?.[1];
+  const chUrl = chId
+    ? `https://www.youtube.com/channel/${chId}`
+    : plId
+    ? `https://www.youtube.com/playlist?list=${plId}`
+    : null;
+  const chUrlTitle = chId ? 'YouTubeチャンネルを開く' : 'YouTubeプレイリストを開く';
   return `
   <div class="follow-card${isExp?' expanded':''}${f.suspended?' suspended':''}${nonYoutubeClass}" id="fc-${f.id}"
     style="${markBg?`background:${markBg};`:''}cursor:pointer">
     <div class="fc-row">
       <!-- PCではfc-previewにアイコンを表示、スマホではここに表示 -->
       <div class="fc-avatar-mobile-wrap" style="display:none;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
-        <div class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
-          ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" alt="${esc(f.initials)}" data-error-action="hideSelf">` : ''}
-          ${f.initials}
-        </div>
+        ${chUrl
+          ? `<a class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="background:${bg};color:${fg};text-decoration:none">
+              ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" alt="${esc(f.initials)}" data-error-action="hideSelf">` : ''}
+              ${f.initials}
+            </a>`
+          : `<div class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
+              ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" alt="${esc(f.initials)}" data-error-action="hideSelf">` : ''}
+              ${f.initials}
+            </div>`}
         ${fmtSubscribers(f.subscriberCount)?`<span class="fc-sub-count">${fmtSubscribers(f.subscriberCount)}</span>`:''}
       </div>
       <div class="fc-body">
         <div class="fc-top">
-          ${(() => {
-            const chId = ytChannelIdFromUrl(f.url);
-            const plId = f.url.match(/playlist_id=([A-Za-z0-9_-]+)/)?.[1];
-            const chUrl = chId
-              ? `https://www.youtube.com/channel/${chId}`
-              : plId
-              ? `https://www.youtube.com/playlist?list=${plId}`
-              : null;
-            return chUrl
-              ? `<a class="fc-name" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chId?'YouTubeチャンネルを開く':'YouTubeプレイリストを開く'}">${esc(f.name)}</a>`
-              : `<span class="fc-name">${esc(f.name)}</span>`;
-          })()}
+          <span class="fc-name">${esc(f.name)}</span>
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag" data-click="1" data-action="setTag" data-args="${dargs([t])}" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span>${linkifyMemo(f.memo)}</span></span>` : ''}
@@ -1751,12 +1756,13 @@ function renderFollowCard(f){
             </a>` : '';
         // 1件目の左にアイコン、右に頻度・ボタン（PCのみ）
         const subStr = fmtSubscribers(f.subscriberCount);
+        const avatarInnerStyle = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
+        const avatarInnerHtml = `${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}${esc(f.initials)}`;
         const leftAvatar = pi===0
           ? `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
-              <div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
-                ${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
-                ${esc(f.initials)}
-              </div>
+              ${chUrl
+                ? `<a class="fc-row-avatar" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="${avatarInnerStyle};text-decoration:none">${avatarInnerHtml}</a>`
+                : `<div class="fc-row-avatar" style="${avatarInnerStyle}">${avatarInnerHtml}</div>`}
               ${subStr?`<span class="fc-sub-count">${subStr}</span>`:''}
             </div>`
           : `<div style="width:34px;flex-shrink:0"></div>`;
@@ -1779,10 +1785,13 @@ function renderFollowCard(f){
       <div class="fc-preview-item">
         <div class="fc-avatar-col">
           <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
-            <div class="fc-row-avatar" style="background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}">
-              ${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}
-              ${esc(f.initials)}
-            </div>
+            ${(() => {
+              const style = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
+              const inner = `${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}${esc(f.initials)}`;
+              return chUrl
+                ? `<a class="fc-row-avatar" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="${style};text-decoration:none">${inner}</a>`
+                : `<div class="fc-row-avatar" style="${style}">${inner}</div>`;
+            })()}
           </div>
         </div>
         <div class="fc-preview-empty" style="padding:8px 0;color:var(--text-faint);font-size:12px">
