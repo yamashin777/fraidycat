@@ -4189,6 +4189,20 @@ function showExportModal(json){
       </div>
     </div>
   </div>`;
+  // PC等、<a download>が機能する環境では、モーダル表示と同時に自動で
+  // ファイルダウンロードを開始する（PCではファイルが直接保存されて欲しい
+  // という要望のため）。UA判定はせず、非表示のリンクを作ってクリックする
+  // だけなので、ダウンロードが機能しない環境（一部iOSブラウザ等）でも
+  // 何も起きないだけで実害はなく、モーダル内のリンクから手動保存できる。
+  try{
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }catch(e){}
 }
 
 // navigator.clipboard.writeText()（Promise）は一部のiOSブラウザで許可待ちの
