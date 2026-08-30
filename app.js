@@ -3822,10 +3822,14 @@ async function resolveYouTubeFeed(input){
   if(!/youtube\.com|youtu\.be/.test(url)) return url;
 
   // @ハンドル・/c/・/user/ 形式 → APIで検索してID取得（APIキーがあれば）
-  const handleMatch = url.match(/youtube\.com\/@([A-Za-z0-9_.\-]+)/);
+  // ハンドル名には日本語等の非ASCII文字がURLエンコードされて含まれることがある
+  // （例: @もふもふ裏話 → @%E3%82%82...）ため、英数字に限定せず「/」「?」「空白」
+  // 以外の文字を幅広く受け入れ、末尾に付くタブ（/shorts, /videos等）は除外する。
+  const handleMatch = url.match(/youtube\.com\/@([^\/\?\s]+)/);
   if(handleMatch && ytApiKey){
     try{
-      const q = handleMatch[1];
+      let q = handleMatch[1];
+      try{ q = decodeURIComponent(q); }catch(e){ /* デコード失敗時はそのまま使う */ }
       const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent('@'+q)}&maxResults=1&key=${ytApiKey}`);
       if(r.ok){
         const d = await r.json();
@@ -3835,9 +3839,12 @@ async function resolveYouTubeFeed(input){
     }catch(e){ /* 次の手段へ */ }
   }
 
-  // 最終手段: チャンネルページのHTMLをプロキシ経由で取得し、channelIdを抜き出す
+  // 最終手段: チャンネルページのHTMLをプロキシ経由で取得し、channelIdを抜き出す。
+  // /shorts・/videos・/streams等のタブが付いていると取得に失敗することがあるため、
+  // チャンネルのホームページURLに正規化してから取得する。
+  const homeUrl = url.replace(/\/(shorts|videos|streams|community|playlists|about|featured)\/?(\?.*)?$/, '');
   try{
-    const raw = await fetchRSSRaw(url); // 既存のプロキシ取得を流用
+    const raw = await fetchRSSRaw(homeUrl); // 既存のプロキシ取得を流用
     const html = typeof raw === 'string' ? raw : (raw?.contents || '');
     // HTML内の "channelId":"UC..." / "externalId":"UC..." / channel/UC... を順に探す
     let cm = html.match(/"(?:channelId|externalId)":"(UC[A-Za-z0-9_-]+)"/);
