@@ -3441,13 +3441,40 @@ function renderModal(){
   </div>`;
 }
 
+// URL入力欄に混入しがちなゴミ文字（コピー元のHTML属性ごとコピーして
+// しまった際の引用符や山括弧、前後の空白など）を自動的に取り除く。
+// 例:
+//   "https://example.com/feed"        → https://example.com/feed
+//   <https://example.com/feed>        → https://example.com/feed
+//   href="https://example.com/feed"   → https://example.com/feed
+//   URLはこちら https://example.com/feed です → https://example.com/feed
+function sanitizeUrlInput(raw){
+  let url = (raw||'').trim();
+  // 前後に繰り返し付いた引用符・山括弧を剥がす
+  for(let i=0;i<3;i++){
+    url = url.replace(/^["'<]+/, '').replace(/["'>]+$/, '').trim();
+  }
+  // href="..."のように前置きが残っている場合や、説明文中にURLが混在している
+  // 場合に備えて、文字列中のhttp(s)で始まる部分だけを抽出する
+  // （単純にURLだけが入力されている場合も、そのままマッチして変化しない）
+  const m = url.match(/https?:\/\/[^\s"'<>]+/);
+  if(m) url = m[0];
+  return url.trim();
+}
+
 async function addFollow(){
   let url = document.getElementById('f-url').value.trim();
-  const name = document.getElementById('f-name').value.trim() || url;
   if(!url){ alert('URLは必須です'); return; }
 
-  // 引用符・空白・山括弧など、URLに混入しやすい不正な文字が含まれていないか確認
-  // （コピー元のHTML属性などから引用符ごとコピーしてしまうミスを早期に検出する）
+  // 引用符・山括弧・前後の空白など、コピー元のHTML属性等から引用符ごと
+  // コピーしてしまった際に混入しやすい文字を自動的に取り除く。
+  // 例: "https://example.com/feed" や <https://example.com/feed> など。
+  url = sanitizeUrlInput(url);
+
+  const name = document.getElementById('f-name').value.trim() || url;
+
+  // 上記の自動除去を行ってもなお不正な文字が残る場合のみエラーにする
+  // （URLが複数混ざっている・全く別の文字列が入っている等、自動修復できないケース）
   const badCharMatch = url.match(/["'<>\s]/);
   if(badCharMatch){
     alert(`URLに使用できない文字（${JSON.stringify(badCharMatch[0])}）が含まれています。\nコピー元から余分な文字が混ざっていないか確認してください。\n\n${url}`);
