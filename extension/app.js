@@ -1253,6 +1253,7 @@ function openRevivalHistory(){
         <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="clearRevivalHistory">クリア</button>
         <button class="btn-cancel" data-click="1" data-action="closeRevivalHistModal">閉じる</button>
       </div>
+      <div id="revivalHistNew"></div>
       <div id="revivalHistBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
     </div>`;
     document.body.appendChild(m);
@@ -1263,7 +1264,31 @@ function openRevivalHistory(){
     // 不具合になるため、あえて付けない。
   }
   m.style.display = 'flex';
+  renderRevivalHistNew();
   renderRevivalHistory();
+  // モーダルで内容を見せたので、未確認扱いを解除してバッジを消す
+  // （表示済みのrenderRevivalHistNew()の結果はモーダルを閉じるまでそのまま残る）
+  if(revivals.length) dismissAllRevivals();
+}
+function renderRevivalHistNew(){
+  const container = document.getElementById('revivalHistNew');
+  if(!container) return;
+  if(!revivals.length){ container.innerHTML = ''; return; }
+  const items = revivals.map(r=>{
+    const safeName = esc(r.name);
+    const safeTitle = esc(r.title||'');
+    return `<div class="rv-item">
+      <span class="rv-badge">${r.gapDays}日ぶり</span>
+      <div class="rv-link" style="display:flex;flex-direction:column;overflow:hidden">
+        <span class="rv-name" data-click="1" data-action="openFollowPanel" data-args="[${r.id}]" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content">${safeName}</span>
+        <a class="rv-title" href="${esc(r.link)}" target="_blank" rel="noopener" title="${safeTitle}" style="text-decoration:none;color:inherit">${safeTitle}</a>
+      </div>
+    </div>`;
+  }).join('');
+  container.innerHTML = `<div class="rv-new-section">
+    <div class="rv-new-head"><span class="rv-new-title">🆕 新着（未確認）${revivals.length}件</span></div>
+    <div class="rv-list">${items}</div>
+  </div>`;
 }
 function closeRevivalHistModal(){
   const m = document.getElementById('revivalHistModal');
@@ -1315,37 +1340,22 @@ function renderRevivalHistory(){
   }).join('');
 }
 
+// 以前は画面上部に固定表示するバナーだったが、上位のカードやヘッダーを
+// 覆い隠してしまう不具合報告があったため、常時表示はやめてヘッダー/
+// ドロワーの「🎉 久しぶり」ボタンに未確認件数のバッジを出すだけにした。
+// 詳細は久しぶり履歴モーダル（openRevivalHistory）の中で確認する。
 function renderRevivalPanel(){
-  let panel = document.getElementById('revivalPanel');
-  if(!revivals.length){
-    if(panel) panel.style.display = 'none';
-    return;
+  const n = revivals.length;
+  for(const id of ['revivalBadge','revivalBadgeMobile']){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    if(n > 0){
+      el.textContent = n > 99 ? '99+' : String(n);
+      el.style.display = 'inline-flex';
+    } else {
+      el.style.display = 'none';
+    }
   }
-  if(!panel){
-    panel = document.createElement('div');
-    panel.id = 'revivalPanel';
-    document.body.appendChild(panel);
-  }
-  panel.style.display = 'block';
-  const items = revivals.map(r=>{
-    const safeName = esc(r.name);
-    const safeTitle = esc(r.title||'');
-    return `<div class="rv-item">
-      <span class="rv-badge">${r.gapDays}日ぶり</span>
-      <div class="rv-link" style="display:flex;flex-direction:column;overflow:hidden">
-        <span class="rv-name" data-click="1" data-action="openFollowPanel" data-args="[${r.id}]" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content">${safeName}</span>
-        <a class="rv-title" href="${esc(r.link)}" target="_blank" rel="noopener" title="${safeTitle}" style="text-decoration:none;color:inherit">${safeTitle}</a>
-      </div>
-      <button class="rv-x" data-click="1" data-action="dismissRevival" data-args="[${r.id}]" title="消す">✕</button>
-    </div>`;
-  }).join('');
-  panel.innerHTML = `<div class="rv-head">
-      <span class="rv-title-main">🎉 久しぶりに更新されたチャンネル（${revivals.length}）</span>
-      <span id="revivalPanelTip" title="${revivalTooltipText()}" style="cursor:help;color:var(--text-faint);font-size:12px;border:1px solid var(--border-strong);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
-      <button class="rv-clear" data-click="1" data-action="openRevivalHistory">履歴</button>
-      <button class="rv-clear" data-click="1" data-action="dismissAllRevivals">すべて消す</button>
-    </div>
-    <div class="rv-list">${items}</div>`;
 }
 
 // ── ログ画面 ──

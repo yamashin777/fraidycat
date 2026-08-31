@@ -363,14 +363,23 @@ body{display:flex;flex-direction:column;min-height:100vh}
   font-size:12px;font-weight:500;color:var(--text);
   font-family:'DM Sans',sans-serif;
 }
-#revivalPanel{
-  position:fixed;top:0;left:0;right:0;z-index:9998;
-  background:linear-gradient(#FFF9E8,#FFF4D6);
-  border-bottom:2px solid #E8C860;
-  box-shadow:0 3px 12px rgba(0,0,0,0.12);
-  max-height:40vh;overflow-y:auto;
-  padding:8px 12px;
+/* #revivalPanelは画面上部に固定表示され、上位のカードやヘッダーを覆い
+   隠してしまう問題があったため廃止。代わりにヘッダー/ドロワーの
+   「🎉 久しぶり」ボタンにバッジ表示し、クリックで開くモーダルの中で
+   確認する方式にした（revival-badge、および久しぶり履歴モーダル内の
+   rv-new-sectionを参照）。 */
+.revival-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:0 4px;margin-left:2px;
+  background:#E0A020;color:#fff;font-size:10px;font-weight:600;
+  border-radius:99px;font-family:'DM Mono',monospace;flex-shrink:0;
 }
+.rv-new-section{
+  padding:8px 10px;background:linear-gradient(#FFF9E8,#FFF4D6);
+  border-bottom:2px solid #E8C860;
+}
+.rv-new-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.rv-new-title{font-size:12px;font-weight:600;color:#8A6D1A}
 .rv-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .rv-title-main{font-size:13px;font-weight:600;color:#8A6D1A}
 .rv-clear{margin-left:auto;font-size:11px;padding:3px 12px;border-radius:99px;border:1px solid #D8B84A;background:#fff;color:#8A6D1A;cursor:pointer}

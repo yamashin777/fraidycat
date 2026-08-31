@@ -21,7 +21,7 @@
     <button class="hdr-btn data" data-click="1" data-touchend="1" data-action="exportJSON">↓ JSONエクスポート<span class="tooltip">フォローデータをJSONファイルで書き出し</span></button>
     <button class="hdr-btn data" data-click="1" data-touchend="1" data-action="triggerImportJsonFile">↑ JSONインポート<span class="tooltip">JSONファイルからデータを読み込み</span></button>
     <button class="hdr-btn data" data-click="1" data-action="openLogModal">📋 ログ<span class="tooltip">取得ログ・成功率・プロキシ別統計を確認</span></button>
-    <button class="hdr-btn data" data-click="1" data-action="openRevivalHistory">🎉 久しぶり<span class="tooltip">久しぶりに更新されたチャンネルの履歴（新着動画を検知した際、その投稿と直前の投稿の間隔が設定日数以上あいていた場合に表示されます。日数は履歴画面から変更可能）</span></button>
+    <button class="hdr-btn data" id="revivalBtn" data-click="1" data-action="openRevivalHistory">🎉 久しぶり<span id="revivalBadge" class="revival-badge" style="display:none">0</span><span class="tooltip">久しぶりに更新されたチャンネルの履歴（新着動画を検知した際、その投稿と直前の投稿の間隔が設定日数以上あいていた場合に表示されます。日数は履歴画面から変更可能）</span></button>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" data-change="1" data-action="importJSON" data-args='["@evt"]'>
     <input type="file" id="importJsonFile" accept=".json" style="display:none" data-change="1" data-action="importJSON" data-args='["@evt"]'>
     <button class="hdr-btn api" data-click="1" data-touchend="1" data-action="openBulkFreqModal">⏱ 頻度一括変更<span class="tooltip">全チャンネルの更新頻度をまとめて変更</span></button>
@@ -77,8 +77,8 @@
   <button class="drawer-btn" data-click="1" data-touchend="1" data-action="openLogModalMobile">
     <span class="drawer-icon">📋</span>取得ログ
   </button>
-  <button class="drawer-btn" data-click="1" data-touchend="1" data-action="openRevivalHistoryMobile">
-    <span class="drawer-icon">🎉</span>久しぶり更新の履歴
+  <button class="drawer-btn" id="revivalBtnMobile" data-click="1" data-touchend="1" data-action="openRevivalHistoryMobile">
+    <span class="drawer-icon">🎉</span>久しぶり更新の履歴<span id="revivalBadgeMobile" class="revival-badge" style="display:none">0</span>
   </button>
   <div class="drawer-title">データ</div>
   <button class="drawer-btn" data-click="1" data-touchend="1" data-action="openGhSettingsModalMobile">
@@ -139,7 +139,7 @@
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0815.26</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0815.27</span>
 </div>
 
 <div id="modalContainer"></div>
