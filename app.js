@@ -1105,7 +1105,7 @@ async function doFetch(f){
     f.error = null;
     if(hadError){
       const shortName = f.name.length > 16 ? f.name.slice(0, 16) + '…' : f.name;
-      showToast(`✓ ${shortName} の取得が回復しました（登録できています）`, 4000);
+      showToast(`✓ ${shortName} の取得が回復しました`, 4000);
     }
     if(feedTitle && f.name === f.url) f.name = feedTitle;
     // 新着があり、かつ最新動画とその前の動画の間隔が設定日数以上なら「久しぶり更新」
