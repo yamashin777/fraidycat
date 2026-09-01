@@ -3861,6 +3861,13 @@ async function resolveYouTubeFeed(input){
   const homeUrl = url.replace(/\/(shorts|videos|streams|community|playlists|about|featured)\/?(\?.*)?$/, '');
   try{
     const html = await fetchHtmlViaProxy(homeUrl);
+    // 最優先: <head>内のRSS自動検出リンク
+    // <link rel="alternate" title="RSS" type="application/rss+xml"
+    //   href="https://www.youtube.com/feeds/videos.xml?channel_id=UC...">
+    // が見つかれば、channelIdを抜き出して組み立てるより確実にフィードURLをそのまま使える。
+    // 属性の並び順はページによって変わりうるため、title="RSS"の有無は問わずhref自体を探す。
+    const rssLinkMatch = html.match(/href="(https:\/\/www\.youtube\.com\/feeds\/videos\.xml\?channel_id=UC[A-Za-z0-9_-]+)"/);
+    if(rssLinkMatch) return rssLinkMatch[1].replace(/&amp;/g, '&');
     // HTML内から channelId を探す。プロキシによってはYouTubeが簡易版HTMLを返し
     // 通常のytInitialData等が含まれないことがあるため、複数のパターンを順に試す。
     let cm = html.match(/"(?:channelId|externalId)":"(UC[A-Za-z0-9_-]+)"/);

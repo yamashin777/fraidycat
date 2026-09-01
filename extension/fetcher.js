@@ -104,16 +104,25 @@ async function fetchHtmlViaProxy(url){
       attempts.push({proxy:'direct', ok:false, reason:`HTTP ${r.status}`});
     }catch(e){ attempts.push({proxy:'direct', ok:false, reason:humanizeProxyError(e?.message)}); }
   }
-  try{
-    const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
-    if(r.ok){
-      const t = await r.text();
-      if(t && t.length > 500){ attempts.push({proxy:'allorigins', ok:true}); lastProxyAttempts = attempts; return t; }
-      attempts.push({proxy:'allorigins', ok:false, reason:'内容が空でした'});
-    } else {
-      attempts.push({proxy:'allorigins', ok:false, reason:`HTTP ${r.status}`});
+  // allorigins はタイムアウト・一時的なネットワークエラーで失敗することが多い
+  // 実測が多かったため、1回だけ短い間隔を空けて再試行する。
+  for(let attempt=0; attempt<2; attempt++){
+    try{
+      const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+      if(r.ok){
+        const t = await r.text();
+        if(t && t.length > 500){ attempts.push({proxy:'allorigins', ok:true}); lastProxyAttempts = attempts; return t; }
+        attempts.push({proxy:'allorigins', ok:false, reason:'内容が空でした'});
+        break;
+      } else {
+        attempts.push({proxy:'allorigins', ok:false, reason:`HTTP ${r.status}`});
+        break;
+      }
+    }catch(e){
+      attempts.push({proxy:'allorigins', ok:false, reason:humanizeProxyError(e?.message)});
+      if(attempt===0) await new Promise(res=>setTimeout(res, 1500));
     }
-  }catch(e){ attempts.push({proxy:'allorigins', ok:false, reason:humanizeProxyError(e?.message)}); }
+  }
   try{
     const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
     if(r.ok){
