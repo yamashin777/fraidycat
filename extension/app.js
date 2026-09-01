@@ -3503,7 +3503,10 @@ async function addFollow(){
       } else {
         if(btn){ btn.textContent = orig; btn.disabled = false; }
         addFetchLog({id:null, name: name || url, ok:false, error:'RSSフィードを見つけられませんでした（登録時）', stage:'add'});
-        alert('このURLからRSSフィードを見つけられませんでした。\nチャンネルページの「/channel/UC...」形式のURL、またはRSS URLを直接入力してください。');
+        alert('このURLからRSSフィードを見つけられませんでした。\n\n' +
+          (ytApiKey
+            ? '「/channel/UC...」形式のURL、またはRSS URLを直接入力してください。'
+            : '「🔑 APIキー」からYouTube Data APIキーを設定すると、@ハンドル形式のURLも自動変換できるようになります（プロキシ経由のページ取得は不安定なため、APIキー設定が確実です）。\nまたは「/channel/UC...」形式のURL、RSS URLを直接入力してください。'));
         return;
       }
     }catch(e){
@@ -3852,12 +3855,18 @@ async function resolveYouTubeFeed(input){
   // 最終手段: チャンネルページのHTMLをプロキシ経由で取得し、channelIdを抜き出す。
   // /shorts・/videos・/streams等のタブが付いていると取得に失敗することがあるため、
   // チャンネルのホームページURLに正規化してから取得する。
+  // fetchRSSRaw()はRSS/Atomフィードであることを検証するため使えない
+  // （HTMLは常に「フィード内容が空」判定になり失敗する）ので、フィード判定を
+  // 行わない専用のfetchHtmlViaProxy()を使う。
   const homeUrl = url.replace(/\/(shorts|videos|streams|community|playlists|about|featured)\/?(\?.*)?$/, '');
   try{
-    const raw = await fetchRSSRaw(homeUrl); // 既存のプロキシ取得を流用
-    const html = typeof raw === 'string' ? raw : (raw?.contents || '');
-    // HTML内の "channelId":"UC..." / "externalId":"UC..." / channel/UC... を順に探す
+    const html = await fetchHtmlViaProxy(homeUrl);
+    // HTML内から channelId を探す。プロキシによってはYouTubeが簡易版HTMLを返し
+    // 通常のytInitialData等が含まれないことがあるため、複数のパターンを順に試す。
     let cm = html.match(/"(?:channelId|externalId)":"(UC[A-Za-z0-9_-]+)"/);
+    if(!cm) cm = html.match(/itemprop="channelId"\s+content="(UC[A-Za-z0-9_-]+)"/);
+    if(!cm) cm = html.match(/"browseId":"(UC[A-Za-z0-9_-]+)"/);
+    if(!cm) cm = html.match(/rel="canonical"\s+href="https:\/\/www\.youtube\.com\/channel\/(UC[A-Za-z0-9_-]+)"/);
     if(!cm) cm = html.match(/channel\/(UC[A-Za-z0-9_-]+)/);
     if(!cm) cm = html.match(/(UC[A-Za-z0-9_-]{20,})/);
     if(cm) return `https://www.youtube.com/feeds/videos.xml?channel_id=${cm[1]}`;

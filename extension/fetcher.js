@@ -86,6 +86,48 @@ function humanizeProxyError(msg){
 // 直近のフェッチで各プロキシがどうだったか（doFetchがログに使う）
 let lastProxyAttempts = [];
 
+// resolveYouTubeFeed()の最終手段（チャンネルページHTMLからchannelIdを抜き出す）専用の
+// 生HTML取得関数。fetchRSSRaw()はRSS/Atomフィードの中身であること（looksLikeFeed）を
+// 検証するため、HTMLページの取得には使えない — <entry>/<item>を含まないHTMLは
+// 常に「フィード内容が空でした」として失敗扱いになり、この経路は事実上一度も
+// 成功しない状態になっていた。ここではフィード判定を行わず、ある程度の長さの
+// レスポンスが返ってくれば成功とみなす。
+async function fetchHtmlViaProxy(url){
+  const attempts = [];
+  if(isExtensionContext){
+    try{
+      const r = await fetch(url, {signal:AbortSignal.timeout(10000)});
+      if(r.ok){
+        const t = await r.text();
+        if(t && t.length > 500){ attempts.push({proxy:'direct', ok:true}); lastProxyAttempts = attempts; return t; }
+      }
+      attempts.push({proxy:'direct', ok:false, reason:`HTTP ${r.status}`});
+    }catch(e){ attempts.push({proxy:'direct', ok:false, reason:humanizeProxyError(e?.message)}); }
+  }
+  try{
+    const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    if(r.ok){
+      const t = await r.text();
+      if(t && t.length > 500){ attempts.push({proxy:'allorigins', ok:true}); lastProxyAttempts = attempts; return t; }
+      attempts.push({proxy:'allorigins', ok:false, reason:'内容が空でした'});
+    } else {
+      attempts.push({proxy:'allorigins', ok:false, reason:`HTTP ${r.status}`});
+    }
+  }catch(e){ attempts.push({proxy:'allorigins', ok:false, reason:humanizeProxyError(e?.message)}); }
+  try{
+    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    if(r.ok){
+      const t = await r.text();
+      if(t && t.length > 500){ attempts.push({proxy:'corsproxy', ok:true}); lastProxyAttempts = attempts; return t; }
+      attempts.push({proxy:'corsproxy', ok:false, reason:'内容が空でした'});
+    } else {
+      attempts.push({proxy:'corsproxy', ok:false, reason:`HTTP ${r.status}`});
+    }
+  }catch(e){ attempts.push({proxy:'corsproxy', ok:false, reason:humanizeProxyError(e?.message)}); }
+  lastProxyAttempts = attempts;
+  throw new Error(attempts.map(a=>`${a.proxy}:${a.ok?'OK':a.reason}`).join(' / ') || 'HTMLページの取得に失敗');
+}
+
 // CORSプロキシを介さない直接取得（対応しているサイトのみ成功する）
 async function fetchDirect(url){
   const r = await fetch(url, {signal:AbortSignal.timeout(8000), mode:'cors'});
