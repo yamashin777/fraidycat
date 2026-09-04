@@ -283,6 +283,36 @@ let ghRepo  = localStorage.getItem('fraidycat_gh_repo')  || 'yamashin777/fraidyc
 let ghPath  = localStorage.getItem('fraidycat_gh_path')  || 'data/follows.json';
 let ghSyncEnabled = localStorage.getItem('fraidycat_gh_sync') === 'true';
 let ghSha = null; // 最新ファイルのSHA（更新に必要）
+
+// どの端末からの自動コミットか後から見分けられるように、端末ごとにラベルを
+// 付けてコミットメッセージに含める（例: "fraidycat sync [iPhone-Safari] ..."）。
+// 初回はUser-Agentから自動判定してlocalStorageに保存し、以後は固定される。
+// GitHub同期設定画面から自由に変更・リネームできる。
+function detectDeviceLabel(){
+  const ua = navigator.userAgent || '';
+  let device = 'PC';
+  if(/iPad/.test(ua)) device = 'iPad';
+  else if(/iPhone/.test(ua)) device = 'iPhone';
+  else if(/Android/.test(ua)) device = /Mobile/.test(ua) ? 'Android' : 'Androidタブレット';
+  else if(/Macintosh/.test(ua)) device = 'Mac';
+  else if(/Windows/.test(ua)) device = 'Windows';
+  if(typeof isExtensionContext !== 'undefined' && isExtensionContext) return `拡張機能-${device}`;
+  let browser = 'Chrome';
+  if(/Edg\//.test(ua)) browser = 'Edge';
+  else if(/FxiOS|Firefox/.test(ua)) browser = 'Firefox';
+  else if(/CriOS/.test(ua)) browser = 'Chrome';
+  else if(/Safari/.test(ua) && !/CriOS|Chrome|Chromium|Edg\//.test(ua)) browser = 'Safari';
+  return `${device}-${browser}`;
+}
+let deviceLabel = localStorage.getItem('fraidycat_device_label') || '';
+if(!deviceLabel){
+  deviceLabel = detectDeviceLabel();
+  try{ localStorage.setItem('fraidycat_device_label', deviceLabel); }catch(e){}
+}
+function setDeviceLabel(val){
+  deviceLabel = (val||'').trim() || detectDeviceLabel();
+  try{ localStorage.setItem('fraidycat_device_label', deviceLabel); mirrorToChromeStorage({ fraidycat_device_label: deviceLabel }); }catch(e){}
+}
 let ghSaveTimer = null;
 // 直近のローカル編集時刻（タグ変更等）。save()のたびに更新し、localStorageにも
 // 永続化する。GitHubへのアップロードはデバウンス（5〜12秒後）されるため、
@@ -445,13 +475,16 @@ async function loadFromGitHub(){
 
 /* GitHubにデータを保存（デバウンス付き） */
 let ghLastSaveAt = 0;
+// チャンネル数が多いと取得完了のたびにこの関数が呼ばれ続けるため、
+// 呼び出しのたびにタイマーをリセットする方式だと保存が頻発しすぎて
+// しまっていた（数秒おきにコミットが発生する原因）。既に次回保存が
+// 予約済みならタイマーをリセットせずそのまま待たせ、その間に来た
+// 変更はまとめて次の1回の保存に含める方式にする。
+const GH_SAVE_BATCH_MS = 60000; // この間隔でまとめて1回だけ保存
 function scheduleSaveToGitHub(){
   if(!ghSyncEnabled || !ghToken || !ghRepo) return;
-  if(ghSaveTimer) clearTimeout(ghSaveTimer);
-  // 連続呼び出しをまとめる。前回保存から間もない場合はさらに延ばす
-  const sinceLast = Date.now() - ghLastSaveAt;
-  const delay = sinceLast < 15000 ? 12000 : 5000;
-  ghSaveTimer = setTimeout(()=>saveToGitHub(), delay);
+  if(ghSaveTimer) return; // 既に次回の保存が予約済みならそのまま待つ（まとめる）
+  ghSaveTimer = setTimeout(()=>{ ghSaveTimer = null; saveToGitHub(); }, GH_SAVE_BATCH_MS);
 }
 
 let ghSaving = false; // 同時保存を防ぐロック
@@ -479,7 +512,7 @@ async function saveToGitHub(retryCount){
     const bytes = new TextEncoder().encode(jsonStr);
     const binStr = Array.from(bytes).map(b=>String.fromCharCode(b)).join('');
     const content = btoa(binStr);
-    const body = {message:`fraidycat sync ${new Date().toISOString()}`,content};
+    const body = {message:`fraidycat sync [${deviceLabel}] ${new Date().toISOString()}`,content};
     if(ghSha) body.sha = ghSha;
     const res = await fetch(
       `https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
@@ -552,6 +585,13 @@ function openGhSettingsModal(){
       <div class="form-row" style="flex-direction:row;align-items:center;gap:10px">
         <input type="checkbox" id="gh-enabled" ${ghSyncEnabled || !ghToken ? 'checked' : ''}>
         <label for="gh-enabled" style="font-size:13px;cursor:pointer">同期を有効にする</label>
+      </div>
+      <div class="form-row">
+        <label class="form-label">この端末のラベル</label>
+        <input class="form-input" id="gh-device-label" type="text"
+          value="${esc(deviceLabel)}" placeholder="例: iPhone-Safari" maxlength="30"
+          data-change="1" data-action="setDeviceLabel" data-args='["@value"]'>
+        <div class="form-hint">同期ログの「fraidycat sync [ラベル] ...」に使われ、どの端末が同期したか見分けられます。空欄にすると自動判定に戻ります。</div>
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" data-click="1" data-action="closeModalContainer">キャンセル</button>
