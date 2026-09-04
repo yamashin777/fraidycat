@@ -33,10 +33,12 @@ const PROXIES = [
     return t;
   },
   async url => {
-    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
-    if(!r.ok) throw new Error(`corsproxy HTTP ${r.status}`);
+    // corsproxy.ioは無料利用が終了し、現在は常に401（APIキー必須）を返すため
+    // 代わりにcodetabs.comの無料CORSプロキシを使用する。
+    const r = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    if(!r.ok) throw new Error(`codetabs HTTP ${r.status}`);
     const t = await r.text();
-    if(!looksLikeFeed(t)) throw new Error('corsproxy: フィード内容が空でした');
+    if(!looksLikeFeed(t)) throw new Error('codetabs: フィード内容が空でした');
     return t;
   },
   async url => {
@@ -55,7 +57,7 @@ const PROXIES = [
     return t;
   },
 ];
-const PROXY_NAMES = ['allorigins', 'corsproxy', 'rss2json', 'feedproxy'];
+const PROXY_NAMES = ['allorigins', 'codetabs', 'rss2json', 'feedproxy'];
 let lastUsedProxy = '';
 
 // Chrome拡張機能の特権コンテキスト（Service Worker／chrome-extension://で開いた
@@ -124,15 +126,16 @@ async function fetchHtmlViaProxy(url){
     }
   }
   try{
-    const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
+    // corsproxy.ioは無料利用が終了し常に401を返すため、codetabs.comを使う。
+    const r = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, {signal:AbortSignal.timeout(12000)});
     if(r.ok){
       const t = await r.text();
-      if(t && t.length > 500){ attempts.push({proxy:'corsproxy', ok:true}); lastProxyAttempts = attempts; return t; }
-      attempts.push({proxy:'corsproxy', ok:false, reason:'内容が空でした'});
+      if(t && t.length > 500){ attempts.push({proxy:'codetabs', ok:true}); lastProxyAttempts = attempts; return t; }
+      attempts.push({proxy:'codetabs', ok:false, reason:'内容が空でした'});
     } else {
-      attempts.push({proxy:'corsproxy', ok:false, reason:`HTTP ${r.status}`});
+      attempts.push({proxy:'codetabs', ok:false, reason:`HTTP ${r.status}`});
     }
-  }catch(e){ attempts.push({proxy:'corsproxy', ok:false, reason:humanizeProxyError(e?.message)}); }
+  }catch(e){ attempts.push({proxy:'codetabs', ok:false, reason:humanizeProxyError(e?.message)}); }
   lastProxyAttempts = attempts;
   throw new Error(attempts.map(a=>`${a.proxy}:${a.ok?'OK':a.reason}`).join(' / ') || 'HTMLページの取得に失敗');
 }
@@ -222,10 +225,11 @@ async function fetchRSSRaw(url){
       lastErr = e;
       const reason = humanizeProxyError(e?.message);
       attempts.push({proxy:pname, ok:false, reason});
-      // レート制限・アクセス拒否・ネットワーク失敗ならそのプロキシを一定時間休ませる
-      // （403は特定チャンネルの一時的な問題ではなく、プロキシ側がこの接続元からの
-      // アクセスを継続的に拒否しているケースが大半のため、429と同様に休止対象とする）
-      if(/\b429\b/.test(e?.message||'') || /\b403\b/.test(e?.message||'') || /Failed to fetch|NetworkError|ERR_FAILED/i.test(e?.message||'')){
+      // レート制限・アクセス拒否・認証必須・ネットワーク失敗ならそのプロキシを一定時間休ませる
+      // （403/401は特定チャンネルの一時的な問題ではなく、プロキシ側がこの接続元からの
+      // アクセスを継続的に拒否している、またはAPIキーが必須になったケースが大半のため、
+      // 429と同様に休止対象とする）
+      if(/\b429\b/.test(e?.message||'') || /\b403\b/.test(e?.message||'') || /\b401\b/.test(e?.message||'') || /Failed to fetch|NetworkError|ERR_FAILED/i.test(e?.message||'')){
         proxyCooldownUntil[i] = Date.now() + PROXY_COOLDOWN_MS;
       }
     }
