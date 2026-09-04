@@ -7,7 +7,7 @@
 <title>Fraidycat Clone</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2026.0815.34">
 </head>
 <body>
 
@@ -139,14 +139,20 @@
   <div class="status-dot" id="statusDot"></div>
   <span id="statusText">準備完了</span>
   <span id="statusHint"></span>
-  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0815.33</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--text-faint);font-family:'DM Mono',monospace">v2026.0815.34</span>
 </div>
 
 <div id="modalContainer"></div>
 
-<script src="parser.js"></script>
-<script src="fetcher.js"></script>
-<script src="app.js"></script>
+<!-- 各jsファイルには?v=バージョン番号を付けてキャッシュを無効化している。
+     GitHub Pagesはapp.js等に比較的長いキャッシュを設定するため、内容を
+     更新してもURLが同じままだとブラウザが古いapp.jsを使い続けてしまい、
+     「バージョン表示は最新なのに動作は古いまま」という不具合が起きていた
+     （index.htmlは都度取得されるがscript srcはキャッシュされるため）。
+     このファイルを更新する際は、下の?v=の値も必ず一緒に変更すること。 -->
+<script src="parser.js?v=2026.0815.34"></script>
+<script src="fetcher.js?v=2026.0815.34"></script>
+<script src="app.js?v=2026.0815.34"></script>
 </body>
 </html>
 
