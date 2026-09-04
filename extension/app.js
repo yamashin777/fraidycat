@@ -947,9 +947,39 @@ function selectTag(tag, inputId='f-tags', boxId='tag-suggestions', followId=null
 
 async function autoFetchTitle(url){
   if(!url || !url.startsWith('http')) return;
+  const urlEl = document.getElementById('f-url');
   const nameEl = document.getElementById('f-name');
   const statusEl = document.getElementById('f-url-status');
   if(!nameEl || !statusEl) return;
+
+  // YouTubeのチャンネルURL等（@ハンドル等）は、そのままではRSSフィードとして
+  // 取得できないため、addFollow()と同じ変換ロジックで先にRSS URLへ解決する。
+  // ここで解決しておくことで、URL欄自体も解決済みのRSS URLに置き換わり
+  // （送信を待たずにここで確認できる）、名前の自動取得も動くようになる。
+  const origUrl = url;
+  if(/youtube\.com|youtu\.be/.test(url) && !/feeds\/videos\.xml/.test(url)){
+    statusEl.textContent = 'RSS検索中…';
+    statusEl.style.color = 'var(--text-faint)';
+    try{
+      const resolved = await resolveYouTubeFeed(url);
+      // 解決を待っている間に入力欄の内容が変わっていたら、この結果は古いので捨てる
+      if(!urlEl || urlEl.value.trim() !== origUrl) return;
+      if(/feeds\/videos\.xml/.test(resolved)){
+        url = resolved;
+        urlEl.value = url;
+        formData.url = url;
+      } else {
+        statusEl.textContent = 'RSSフィードを見つけられませんでした。🔑 APIキーを設定するか、URLを直接入力してください。';
+        statusEl.style.color = 'var(--text-faint)';
+        return;
+      }
+    }catch(e){
+      if(!urlEl || urlEl.value.trim() !== origUrl) return;
+      statusEl.textContent = '名前を手動で入力してください';
+      statusEl.style.color = 'var(--text-faint)';
+      return;
+    }
+  }
 
   // 重複チェック
   const duplicate = follows.find(f => f.url === url);
