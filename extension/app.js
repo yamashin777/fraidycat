@@ -481,10 +481,23 @@ let ghLastSaveAt = 0;
 // 予約済みならタイマーをリセットせずそのまま待たせ、その間に来た
 // 変更はまとめて次の1回の保存に含める方式にする。
 const GH_SAVE_BATCH_MS = 60000; // この間隔でまとめて1回だけ保存
-function scheduleSaveToGitHub(){
+// 拡張機能はタブを開きっぱなしで常時取得するため、自動取得結果の保存が
+// 約1分ごとにコミットされ続け、リポジトリが肥大化していた。拡張機能では
+// 自動取得による保存だけ10分ごとにまとめる（ユーザー編集は従来どおり1分）。
+const GH_AUTO_SAVE_BATCH_MS = (typeof isExtensionContext !== 'undefined' && isExtensionContext) ? 10*60*1000 : GH_SAVE_BATCH_MS;
+let ghSaveDueAt = 0;
+function scheduleSaveToGitHub(isUserEdit=true){
   if(!ghSyncEnabled || !ghToken || !ghRepo) return;
-  if(ghSaveTimer) return; // 既に次回の保存が予約済みならそのまま待つ（まとめる）
-  ghSaveTimer = setTimeout(()=>{ ghSaveTimer = null; saveToGitHub(); }, GH_SAVE_BATCH_MS);
+  const delay = isUserEdit ? GH_SAVE_BATCH_MS : GH_AUTO_SAVE_BATCH_MS;
+  const dueAt = Date.now() + delay;
+  // 既に予約済みなら基本はそのまま待つ（まとめる）。ただし自動保存の長い待ちの間に
+  // ユーザー編集が来た場合は、編集が他端末へ早く届くよう予約を前倒しする。
+  if(ghSaveTimer){
+    if(dueAt >= ghSaveDueAt) return;
+    clearTimeout(ghSaveTimer);
+  }
+  ghSaveDueAt = dueAt;
+  ghSaveTimer = setTimeout(()=>{ ghSaveTimer = null; ghSaveDueAt = 0; saveToGitHub(); }, delay);
 }
 
 let ghSaving = false; // 同時保存を防ぐロック
@@ -814,7 +827,7 @@ function save(syncToGh=true, isUserEdit=true){
     localStorage.setItem('fraidycat_tag_order', JSON.stringify(tagOrder));
     // Service Worker（バックグラウンド更新）がチャンネル一覧・設定を参照できるようミラー
     mirrorToChromeStorage({ fraidycat_follows: data, fraidycat_tag_order: tagOrder });
-    if(syncToGh) scheduleSaveToGitHub();
+    if(syncToGh) scheduleSaveToGitHub(isUserEdit);
   }catch(e){}
 }
 // 旧頻度ラベルを新ラベルに変換
@@ -1095,11 +1108,24 @@ const MIN_FETCH_GAP_MS = 1000;
 let lastFetchStartAt = 0;
 let drainQueueTimer = null;
 
-function enqueueFetch(f, countable=true){
+// priority=true はキューの先頭側に入れる（新規追加したRSSを他の定期取得より先に取得するため）。
+// 優先分どうしは追加順を保つよう、既存の優先分の後ろ・通常分の前に差し込む。
+const priorityFetchIds = new Set();
+function enqueueFetch(f, countable=true, priority=false){
   if(f.loading) return;
-  if(fetchQueue.find(x=>x.id===f.id)) return;
-  fetchQueue.push(f);
-  if(countable) fetchTotal++;
+  const queuedIdx = fetchQueue.findIndex(x=>x.id===f.id);
+  if(queuedIdx >= 0){
+    // 通常分として既に並んでいる場合、優先指定なら前へ繰り上げる
+    if(!priority || priorityFetchIds.has(f.id)) return;
+    fetchQueue.splice(queuedIdx, 1);
+  } else if(countable) fetchTotal++;
+  if(priority){
+    priorityFetchIds.add(f.id);
+    const insertAt = fetchQueue.findIndex(x=>!priorityFetchIds.has(x.id));
+    if(insertAt < 0) fetchQueue.push(f); else fetchQueue.splice(insertAt, 0, f);
+  } else {
+    fetchQueue.push(f);
+  }
   drainQueue();
 }
 
@@ -1113,6 +1139,7 @@ function drainQueue(){
       return;
     }
     const f = fetchQueue.shift();
+    priorityFetchIds.delete(f.id);
     lastFetchStartAt = Date.now();
     if(!f.loading) doFetch(f);
   }
@@ -2112,8 +2139,8 @@ function changeUrl(id, val){
   f.error = null;
   save();
   render();
-  // URL変更時は新しいフィードを即取得
-  enqueueFetch(f, false);
+  // URL変更時は新しいフィードを最優先で即取得
+  enqueueFetch(f, false, true);
 }
 
 function changeMemo(id, val){
@@ -3656,7 +3683,7 @@ async function addFollow(){
   save();
   closeModal();
   render();
-  enqueueFetch(f);
+  enqueueFetch(f, true, true); // 新規追加は定期取得より先に最優先で取得
 }
 
 function delFollow(id){
@@ -3877,9 +3904,9 @@ function execImport(){
   closeImportModal();
   render();
 
-  // 順番にフェッチ（一気に全部飛ばさず少し間隔を空ける）
+  // 順番にフェッチ（一気に全部飛ばさず少し間隔を空ける）。新規追加分は最優先で取得
   newFollows.forEach((f, i) => {
-    setTimeout(() => enqueueFetch(f), i * 300);
+    setTimeout(() => enqueueFetch(f, true, true), i * 300);
   });
 }
 
