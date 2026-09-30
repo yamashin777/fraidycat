@@ -180,7 +180,7 @@ function showTextExportModal(title, text, filename){
            target="_blank" rel="noopener">ファイルとして開く</a>
       </div>
       <textarea id="textExportArea" readonly
-        style="width:100%;height:240px;font-family:'DM Mono',monospace;font-size:11px;
+        style="width:100%;height:240px;font-family:var(--font-num);font-size:11px;
         border:1px solid var(--border-strong);border-radius:8px;padding:8px;
         background:var(--bg);color:var(--text);resize:vertical;-webkit-user-select:all;user-select:all"
         data-click="1" data-action="selectInputText" data-args='["@el"]'>${esc(text)}</textarea>
@@ -635,7 +635,7 @@ function renderGhSyncLogSection(){
     }
     return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid var(--border)">
       <span style="color:${color};flex-shrink:0">${icon}</span>
-      <span style="color:var(--text-faint);flex-shrink:0;font-family:'DM Mono',monospace">${time}</span>
+      <span style="color:var(--text-faint);flex-shrink:0;font-family:var(--font-num)">${time}</span>
       <span style="flex-shrink:0">${typeLabel}</span>
       <span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${detail}</span>
     </div>`;
@@ -1432,7 +1432,7 @@ function renderRevivalHistory(){
         <span data-click="1" data-action="openFollowPanel" data-args="[${r.id}]" title="fraidycatでこのチャンネルを開く" style="cursor:pointer;text-decoration:underline dotted;width:fit-content;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
         <a href="${esc(r.link)}" target="_blank" rel="noopener" style="text-decoration:none;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title||'')}</a>
       </div>
-      <span style="color:var(--text-faint);flex-shrink:0;font-family:'DM Mono',monospace">${date}</span>
+      <span style="color:var(--text-faint);flex-shrink:0;font-family:var(--font-num)">${date}</span>
     </div>`;
   }).join('');
 }
@@ -1639,7 +1639,7 @@ function renderLogModal(){
       : '';
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;${attemptsRow?'':'border-bottom:1px solid var(--border);'}font-size:12px">
       <span style="color:${color};font-weight:bold;width:14px;flex-shrink:0">${icon}</span>
-      <span style="color:var(--text-faint);font-family:'DM Mono',monospace;flex-shrink:0">${date} ${time}</span>
+      <span style="color:var(--text-faint);font-family:var(--font-num);flex-shrink:0">${date} ${time}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${targetFollow?'cursor:pointer;color:var(--accent-mid);text-decoration:underline dotted':''}"
         ${targetFollow?`data-click="1" data-action="openFollowPanel" data-args="[${targetFollow.id}]" title="このチャンネルの設定を開く"`:''}
       >${esc(l.name||'')}</span>
@@ -1863,7 +1863,7 @@ function renderFollowCard(f){
             </a>` : '';
         // 1件目の左にアイコン、右に頻度・ボタン（PCのみ）
         const subStr = fmtSubscribers(f.subscriberCount);
-        const avatarInnerStyle = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
+        const avatarInnerStyle = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:var(--font-num);overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
         const avatarInnerHtml = `${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}${esc(f.initials)}`;
         const leftAvatar = pi===0
           ? `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
@@ -1881,7 +1881,7 @@ function renderFollowCard(f){
             ${durText?`<span class="dp-dur"${durAttr}>${durText}</span>`:''}
           </div>
           <a class="fc-preview-title" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>
-          ${(!geminiApiKey||p.duration===-2||p.duration===-3) ? '' : `<button class="fc-copy-btn" style="flex-shrink:0;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;white-space:nowrap;color:var(--pill-summary);background:#0A5C6B22;border:none;border-radius:99px;padding:2px 9px" data-click="1" data-action="openSummaryModal" data-args="${dargs([f.id, p.link])}" title="AIで要約">要約</button>`}
+          ${(!geminiApiKey||p.duration===-2||p.duration===-3) ? '' : `<button class="fc-copy-btn" style="flex-shrink:0;font-size:11px;font-weight:500;font-family:var(--font-ui);white-space:nowrap;color:var(--pill-summary);background:#0A5C6B22;border:none;border-radius:99px;padding:2px 9px" data-click="1" data-action="openSummaryModal" data-args="${dargs([f.id, p.link])}" title="AIで要約">要約</button>`}
           ${thumbHtml}
           <span class="fc-preview-spacer" style="flex:1"></span>
           ${rightButtons}
@@ -1893,7 +1893,7 @@ function renderFollowCard(f){
         <div class="fc-avatar-col">
           <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
             ${(() => {
-              const style = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:'DM Mono',monospace;overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
+              const style = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:var(--font-num);overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
               const inner = `${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}${esc(f.initials)}`;
               return chUrl
                 ? `<a class="fc-row-avatar" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="${style};text-decoration:none">${inner}</a>`
@@ -2917,7 +2917,7 @@ function openDrawer(){
         html += `<button data-tag="${markTag}" title="${val.label}マーク（${markCnt}件）"
           style="width:18px;height:18px;border-radius:50%;background:${val.border};color:${textColor};
           border:1.5px solid ${activeTag===markTag?'var(--text)':'transparent'};cursor:pointer;
-          font-size:8px;font-family:'DM Mono',monospace;display:flex;align-items:center;justify-content:center;flex-shrink:0">${markCnt}</button>`;
+          font-size:8px;font-family:var(--font-num);display:flex;align-items:center;justify-content:center;flex-shrink:0">${markCnt}</button>`;
       });
       html += `</div>`;
     }
@@ -4337,7 +4337,7 @@ function showExportModal(json){
            target="_blank" rel="noopener">ファイルとして開く</a>
       </div>
       <textarea id="exportJsonArea" readonly
-        style="width:100%;height:240px;font-family:'DM Mono',monospace;font-size:11px;
+        style="width:100%;height:240px;font-family:var(--font-num);font-size:11px;
         border:1px solid var(--border-strong);border-radius:8px;padding:8px;
         background:var(--bg);color:var(--text);resize:vertical;-webkit-user-select:all;user-select:all"
         data-click="1" data-action="selectInputText" data-args='["@el"]'>${esc(json)}</textarea>
