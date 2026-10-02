@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fraidycat Clone",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "YouTube・RSSフィードをまとめてチェックできるフィードリーダー",
   "action": {
     "default_title": "Fraidycat Cloneを開く",

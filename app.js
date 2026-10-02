@@ -171,13 +171,13 @@ function showTextExportModal(title, text, filename){
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
         下のボタンでコピーを試すか、確実な方法として下のテキスト欄をタップ（全選択されます）→
         指を離さず長押し→「コピー」を選んでください。<br>
-        リンクを長押し→「リンク先のファイルをダウンロード」でファイル保存もできます。
+        「ファイルとして保存」でファイルに保存できます（スマホで保存されない場合はボタンを長押し→「リンク先のファイルをダウンロード」）。
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn-ok" data-click="1" data-action="copyTextExportArea" data-args='["@el"]'>クリップボードにコピー</button>
         <a class="btn-ok" href="${url}" download="${filename}"
            style="text-decoration:none;display:inline-flex;align-items:center"
-           target="_blank" rel="noopener">ファイルとして開く</a>
+           target="_blank" rel="noopener">ファイルとして保存</a>
       </div>
       <textarea id="textExportArea" readonly
         style="width:100%;height:240px;font-family:var(--font-num);font-size:11px;
@@ -4328,13 +4328,13 @@ function showExportModal(json){
     <div class="modal" style="max-width:560px">
       <h2>JSONエクスポート（${follows.length}件）</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6">
-        下のボタンでコピーするか、リンクを長押し→「リンク先のファイルをダウンロード」で保存できます。
+        PCでは開いた時点でファイルが自動で保存されます。保存されなかった場合は「ファイルとして保存」を押してください（スマホではボタンを長押し→「リンク先のファイルをダウンロード」）。コピーして使う場合は「クリップボードにコピー」を押してください。
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn-ok" data-click="1" data-action="copyExportJson" data-args='["@el"]'>クリップボードにコピー</button>
         <a class="btn-ok" href="${url}" download="${fname}"
            style="text-decoration:none;display:inline-flex;align-items:center"
-           target="_blank" rel="noopener">ファイルとして開く</a>
+           target="_blank" rel="noopener">ファイルとして保存</a>
       </div>
       <textarea id="exportJsonArea" readonly
         style="width:100%;height:240px;font-family:var(--font-num);font-size:11px;
