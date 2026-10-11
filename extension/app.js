@@ -2141,6 +2141,7 @@ function changeUrl(id, val){
   // チャンネルが変わった可能性があるのでユーチュラの番号も調べ直す
   f.yuturaId = null;
   f.yuturaCheckedAt = null;
+  f.yuturaCheckVer = null;
   save();
   render();
   // URL変更時は新しいフィードを最優先で即取得
@@ -4811,30 +4812,64 @@ const YUTURA_SAVE_EVERY = 20;                      // この件数ごとにま�
 let yuturaTimer = null;
 let yuturaUnsaved = 0;
 
+// 調べ方を変えた時に、以前「見つからない」と判定したチャンネルも調べ直すための版数
+// （2: チャンネルIDで見つからない時にチャンネル名でも検索するようにした）
+const YUTURA_CHECK_VER = 2;
+
+function yuturaSearchUrl(word){
+  return `https://yutura.net/search/?mode=channel&w=${encodeURIComponent(word || '')}`;
+}
+// チャンネル名で検索する語句。名前全体と、「。」「_」「｜」等の区切りより前の部分
+function yuturaNameQueries(name){
+  const n = (name || '').trim();
+  const head = n.split(/[。、｜|／/【\[（(_~〜:：!！?？]/)[0].trim();
+  return [...new Set([n, head])].filter(q => q.length >= 2);
+}
 function yuturaUrl(f){
   if(f.yuturaId) return `https://yutura.net/channel/${f.yuturaId}/`;
-  const chId = ytChannelIdFromUrl(f.url || '');
-  return `https://yutura.net/search/?mode=channel&w=${encodeURIComponent(chId || '')}`;
+  // ユーチュラの検索はチャンネルIDで見つからないチャンネルがあるため、
+  // 調べた結果見つからなかった場合はチャンネル名での検索結果を開く
+  if(f.yuturaCheckedAt && f.yuturaCheckVer === YUTURA_CHECK_VER) return yuturaSearchUrl(yuturaNameQueries(f.name)[0]);
+  return yuturaSearchUrl(ytChannelIdFromUrl(f.url || ''));
 }
+
+async function yuturaFetchText(url){
+  const r = await fetch(url, {signal:AbortSignal.timeout(15000), credentials:'omit', cache:'no-store'});
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.text();
+}
+const yuturaSleep = ms => new Promise(r => setTimeout(r, ms));
 
 // 成功（見つかった／見つからなかった）なら true、通信エラーなら false
 async function resolveYuturaId(f){
   const chId = ytChannelIdFromUrl(f.url || '');
   if(!chId) return true;
   try{
-    const r = await fetch(`https://yutura.net/search/?mode=channel&w=${encodeURIComponent(chId)}`,
-      {signal:AbortSignal.timeout(15000), credentials:'omit', cache:'no-store'});
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    const html = await r.text();
-    // 別チャンネルとの取り違えを防ぐため、ヒットがちょうど1件の時だけ採用する
+    let found = null;
+    // 1) チャンネルIDで検索。別チャンネルとの取り違えを防ぐため、ヒットがちょうど1件の時だけ採用する
+    const html = await yuturaFetchText(yuturaSearchUrl(chId));
     const hits = html.match(/([0-9,]+)件のチャンネルがヒット/);
     const m = html.match(/<h2><a href="\/channel\/(\d+)\/">/);
-    f.yuturaCheckedAt = Date.now();
-    if(hits && hits[1] === '1' && m){
-      f.yuturaId = Number(m[1]);
-      const a = document.querySelector(`#fc-${f.id} .fc-yutura-link`);
-      if(a) a.href = yuturaUrl(f);
+    if(hits && hits[1] === '1' && m) found = m[1];
+    // 2) IDで見つからなければチャンネル名で検索し、候補のチャンネルページに
+    //    同じYouTubeチャンネルIDが載っているものだけを採用する（名前の似た別チャンネル対策）
+    if(!found){
+      search: for(const q of yuturaNameQueries(f.name)){
+        await yuturaSleep(1500);
+        const res = await yuturaFetchText(yuturaSearchUrl(q));
+        const cands = [...res.matchAll(/<h2><a href="\/channel\/(\d+)\/">/g)].map(x => x[1]).slice(0, 3);
+        for(const c of cands){
+          await yuturaSleep(1500);
+          const page = await yuturaFetchText(`https://yutura.net/channel/${c}/`);
+          if(page.includes(`youtube.com/channel/${chId}`)){ found = c; break search; }
+        }
+      }
     }
+    f.yuturaCheckedAt = Date.now();
+    f.yuturaCheckVer = YUTURA_CHECK_VER;
+    if(found) f.yuturaId = Number(found);
+    const a = document.querySelector(`#fc-${f.id} .fc-yutura-link`);
+    if(a) a.href = yuturaUrl(f);
     return true;
   }catch(e){
     console.warn('ユーチュラ番号の取得に失敗:', f.name, e.message);
@@ -4849,7 +4884,7 @@ function scheduleYuturaResolve(delay){
     yuturaTimer = null;
     const now = Date.now();
     const f = follows.find(x => !x.yuturaId && ytChannelIdFromUrl(x.url || '')
-      && !(x.yuturaCheckedAt && now - x.yuturaCheckedAt < YUTURA_RETRY_MS));
+      && !(x.yuturaCheckedAt && x.yuturaCheckVer === YUTURA_CHECK_VER && now - x.yuturaCheckedAt < YUTURA_RETRY_MS));
     if(!f){
       // 未解決が無くなったら溜まっていた分を保存して終了
       if(yuturaUnsaved){ yuturaUnsaved = 0; save(true, false); }
