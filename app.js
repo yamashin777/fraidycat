@@ -1842,7 +1842,7 @@ function renderFollowCard(f){
           <span class="fc-name">${esc(f.name)}</span>
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag" data-click="1" data-action="setTag" data-args="${dargs([t])}" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
-          ${chId ? `<a class="fc-yutura-link" href="${esc(yuturaUrl(f))}" target="_blank" rel="noopener" title="ユーチュラでこのチャンネルの情報を見る" aria-label="ユーチュラ"></a>` : ''}
+          ${chId ? `<a class="fc-yutura-link" href="${esc(yuturaUrl(f))}" target="_blank" rel="noopener" data-click="1" data-action="openYutura" data-args="${dargs([f.id, '@evt'])}" title="ユーチュラでこのチャンネルの情報を見る" aria-label="ユーチュラ"></a>` : ''}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span>${linkifyMemo(f.memo)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
           ${f.suspended ? '' : `<span class="freq-pill ${pillClass}">${freqLabel(f.freq)}</span>`}
@@ -4831,8 +4831,8 @@ function yuturaNameQueries(name){
 function yuturaUrl(f){
   if(f.yuturaId) return `https://yutura.net/channel/${f.yuturaId}/`;
   // ユーチュラの検索はチャンネルIDで見つからないチャンネルがあるため、
-  // 調べた結果見つからなかった場合はチャンネル名での検索結果を開く
-  if(f.yuturaCheckedAt && f.yuturaCheckVer === YUTURA_CHECK_VER) return yuturaSearchUrl(yuturaNameQueries(f.name)[0]);
+  // 調べた結果見つからなかった場合（旧方式での確認を含む）はチャンネル名での検索結果を開く
+  if(f.yuturaCheckedAt) return yuturaSearchUrl(yuturaNameQueries(f.name)[0]);
   return yuturaSearchUrl(ytChannelIdFromUrl(f.url || ''));
 }
 
@@ -4878,6 +4878,23 @@ async function resolveYuturaId(f){
     console.warn('ユーチュラ番号の取得に失敗:', f.name, e.message);
     return false;
   }
+}
+
+// ユーチュラのアイコンを押した時の処理。拡張機能版で番号が未確認（または旧方式での
+// 確認のみ）なら、その場で調べてから開く。バックグラウンドの順番待ちを待たずに済む。
+// ポップアップブロックを避けるため、クリック直後に空のタブを開いておき、調べ終えたら移動する。
+async function openYutura(id, evt){
+  const f = follows.find(x => x.id === id);
+  if(!f || f.yuturaId) return; // 番号が分かっていればリンクのまま開く
+  if(!(typeof isExtensionContext !== 'undefined' && isExtensionContext)) return;
+  if(f.yuturaCheckedAt && f.yuturaCheckVer === YUTURA_CHECK_VER) return; // 新方式で確認済み（見つからない）
+  if(evt) evt.preventDefault();
+  const w = window.open('about:blank', '_blank');
+  const ok = await resolveYuturaId(f);
+  const url = yuturaUrl(f);
+  if(w) w.location.href = url; else window.open(url, '_blank');
+  if(ok) save(true, false);
+  if(!f.yuturaId) showToast(ok ? 'ユーチュラにこのチャンネルが見つからなかったため、名前の検索結果を開きました' : 'ユーチュラに接続できなかったため、検索結果を開きました', 3500);
 }
 
 function scheduleYuturaResolve(delay){
