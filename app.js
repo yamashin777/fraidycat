@@ -257,6 +257,18 @@ const FREQ_PILL = {
   '5分':'fp-rt','15分':'fp-daily','30分':'fp-weekly',
   '1時間':'fp-monthly','6時間':'fp-yearly'
 };
+// ユーチュラ番号の解決（ファイル末尾の「ユーチュラ」の処理）で使う設定値。
+// yuturaUrl()は起動直後の一覧描画（ファイル末尾まで読み込まれる前）から
+// 呼ばれるため、const定義はここ（描画より前）に置く必要がある。
+const YUTURA_GAP_MS = 4000;                        // 1件ごとの間隔（ユーチュラへの負荷を抑える）
+const YUTURA_RETRY_MS = 30*24*60*60*1000;          // 見つからなかったチャンネルの再確認は30日後
+const YUTURA_ERROR_BACKOFF_MS = 5*60*1000;         // 通信エラー時は5分休む
+const YUTURA_SAVE_EVERY = 20;                      // この件数ごとにまとめて保存
+let yuturaTimer = null;
+let yuturaUnsaved = 0;
+// 調べ方を変えた時に、以前「見つからない」と判定したチャンネルも調べ直すための版数
+// （2: チャンネルIDで見つからない時にチャンネル名でも検索するようにした）
+const YUTURA_CHECK_VER = 2;
 const FREQ_INTERVAL = {
   '5分':5*60*1000,'15分':15*60*1000,'30分':30*60*1000,
   '1時間':60*60*1000,'6時間':6*60*60*1000
@@ -4805,16 +4817,7 @@ setTimeout(async ()=>{
    ユーチュラは公共CORSプロキシ経由では取得できないため、host_permissionsで
    直接取得できるChrome拡張機能版でだけ解決処理を動かす。Web版は同期された番号を
    使い、未解決のチャンネルは検索結果ページへのリンクで代用する。 */
-const YUTURA_GAP_MS = 4000;                        // 1件ごとの間隔（ユーチュラへの負荷を抑える）
-const YUTURA_RETRY_MS = 30*24*60*60*1000;          // 見つからなかったチャンネルの再確認は30日後
-const YUTURA_ERROR_BACKOFF_MS = 5*60*1000;         // 通信エラー時は5分休む
-const YUTURA_SAVE_EVERY = 20;                      // この件数ごとにまとめて保存
-let yuturaTimer = null;
-let yuturaUnsaved = 0;
 
-// 調べ方を変えた時に、以前「見つからない」と判定したチャンネルも調べ直すための版数
-// （2: チャンネルIDで見つからない時にチャンネル名でも検索するようにした）
-const YUTURA_CHECK_VER = 2;
 
 function yuturaSearchUrl(word){
   return `https://yutura.net/search/?mode=channel&w=${encodeURIComponent(word || '')}`;
