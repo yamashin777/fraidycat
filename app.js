@@ -1837,6 +1837,7 @@ function renderFollowCard(f){
           <span class="fc-ago" title="最終確認時刻">${f.lastFetched ? agoText+'取得' : agoText}</span>
           <button class="fc-fav-btn" data-mark="${f.markColor||''}" data-click="1" data-action="openMarkPopup" data-args="${dargs([f.id, '@el'])}" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
           <button class="fc-cal-btn" data-click="1" data-action="toggleRegDateInput" data-args="[${f.id}]" title="登録日">📅</button>
+          ${chId ? `<a class="fc-yutura-link" href="https://yutura.net/search/?mode=channel&amp;w=${encodeURIComponent(chId)}" target="_blank" rel="noopener" title="ユーチュラでこのチャンネルの情報を見る">ユーチュラ</a>` : ''}
           ${regDateText ? `<span class="fc-regdate-inline" title="登録日">${regDateText}登録</span>` : ''}
           <button class="fc-del" data-click="1" data-action="delFollow" data-args="[${f.id}]" title="削除">✕</button>
           <span class="fc-top-spacer" style="flex:1;min-width:16px;align-self:stretch" title="タップして開閉"></span>
