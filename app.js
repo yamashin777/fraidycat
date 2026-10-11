@@ -1830,6 +1830,7 @@ function renderFollowCard(f){
           <span class="fc-name">${esc(f.name)}</span>
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag" data-click="1" data-action="setTag" data-args="${dargs([t])}" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
+          ${chId ? `<a class="fc-yutura-link" href="${esc(yuturaUrl(f))}" target="_blank" rel="noopener" title="ユーチュラでこのチャンネルの情報を見る" aria-label="ユーチュラ"></a>` : ''}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span>${linkifyMemo(f.memo)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
           ${f.suspended ? '' : `<span class="freq-pill ${pillClass}">${freqLabel(f.freq)}</span>`}
@@ -1837,7 +1838,6 @@ function renderFollowCard(f){
           <span class="fc-ago" title="最終確認時刻">${f.lastFetched ? agoText+'取得' : agoText}</span>
           <button class="fc-fav-btn" data-mark="${f.markColor||''}" data-click="1" data-action="openMarkPopup" data-args="${dargs([f.id, '@el'])}" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
           <button class="fc-cal-btn" data-click="1" data-action="toggleRegDateInput" data-args="[${f.id}]" title="登録日">📅</button>
-          ${chId ? `<a class="fc-yutura-link" href="${esc(yuturaUrl(f))}" target="_blank" rel="noopener" title="ユーチュラでこのチャンネルの情報を見る">ユーチュラ</a>` : ''}
           ${regDateText ? `<span class="fc-regdate-inline" title="登録日">${regDateText}登録</span>` : ''}
           <button class="fc-del" data-click="1" data-action="delFollow" data-args="[${f.id}]" title="削除">✕</button>
           <span class="fc-top-spacer" style="flex:1;min-width:16px;align-self:stretch" title="タップして開閉"></span>
