@@ -1837,7 +1837,7 @@ function renderFollowCard(f){
           <span class="fc-ago" title="最終確認時刻">${f.lastFetched ? agoText+'取得' : agoText}</span>
           <button class="fc-fav-btn" data-mark="${f.markColor||''}" data-click="1" data-action="openMarkPopup" data-args="${dargs([f.id, '@el'])}" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
           <button class="fc-cal-btn" data-click="1" data-action="toggleRegDateInput" data-args="[${f.id}]" title="登録日">📅</button>
-          ${chId ? `<a class="fc-yutura-link" href="https://yutura.net/search/?mode=channel&amp;w=${encodeURIComponent(chId)}" target="_blank" rel="noopener" title="ユーチュラでこのチャンネルの情報を見る">ユーチュラ</a>` : ''}
+          ${chId ? `<a class="fc-yutura-link" href="${esc(yuturaUrl(f))}" target="_blank" rel="noopener" title="ユーチュラでこのチャンネルの情報を見る">ユーチュラ</a>` : ''}
           ${regDateText ? `<span class="fc-regdate-inline" title="登録日">${regDateText}登録</span>` : ''}
           <button class="fc-del" data-click="1" data-action="delFollow" data-args="[${f.id}]" title="削除">✕</button>
           <span class="fc-top-spacer" style="flex:1;min-width:16px;align-self:stretch" title="タップして開閉"></span>
@@ -2138,6 +2138,9 @@ function changeUrl(id, val){
   markLocalEdit();
   f.url = url;
   f.error = null;
+  // チャンネルが変わった可能性があるのでユーチュラの番号も調べ直す
+  f.yuturaId = null;
+  f.yuturaCheckedAt = null;
   save();
   render();
   // URL変更時は新しいフィードを最優先で即取得
@@ -4793,3 +4796,70 @@ setTimeout(async ()=>{
   debouncedRender();
   save(true, false); // 完了後に1回だけGitHub同期。起動時の自動取得なのでユーザー編集扱いにしない
 }, 5000);
+
+/* ── ユーチュラ（yutura.net）のチャンネル番号の解決 ──
+   ユーチュラのチャンネルページ（/channel/70294/ 等）はユーチュラ独自の番号で、
+   YouTubeのチャンネルIDからは直接作れない。チャンネルIDで検索した結果ページを
+   読み取って番号を調べ、follow.yuturaId に保存する（GitHub同期で他端末にも共有）。
+   ユーチュラは公共CORSプロキシ経由では取得できないため、host_permissionsで
+   直接取得できるChrome拡張機能版でだけ解決処理を動かす。Web版は同期された番号を
+   使い、未解決のチャンネルは検索結果ページへのリンクで代用する。 */
+const YUTURA_GAP_MS = 4000;                        // 1件ごとの間隔（ユーチュラへの負荷を抑える）
+const YUTURA_RETRY_MS = 30*24*60*60*1000;          // 見つからなかったチャンネルの再確認は30日後
+const YUTURA_ERROR_BACKOFF_MS = 5*60*1000;         // 通信エラー時は5分休む
+const YUTURA_SAVE_EVERY = 20;                      // この件数ごとにまとめて保存
+let yuturaTimer = null;
+let yuturaUnsaved = 0;
+
+function yuturaUrl(f){
+  if(f.yuturaId) return `https://yutura.net/channel/${f.yuturaId}/`;
+  const chId = ytChannelIdFromUrl(f.url || '');
+  return `https://yutura.net/search/?mode=channel&w=${encodeURIComponent(chId || '')}`;
+}
+
+// 成功（見つかった／見つからなかった）なら true、通信エラーなら false
+async function resolveYuturaId(f){
+  const chId = ytChannelIdFromUrl(f.url || '');
+  if(!chId) return true;
+  try{
+    const r = await fetch(`https://yutura.net/search/?mode=channel&w=${encodeURIComponent(chId)}`,
+      {signal:AbortSignal.timeout(15000), credentials:'omit', cache:'no-store'});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+    // 別チャンネルとの取り違えを防ぐため、ヒットがちょうど1件の時だけ採用する
+    const hits = html.match(/([0-9,]+)件のチャンネルがヒット/);
+    const m = html.match(/<h2><a href="\/channel\/(\d+)\/">/);
+    f.yuturaCheckedAt = Date.now();
+    if(hits && hits[1] === '1' && m){
+      f.yuturaId = Number(m[1]);
+      const a = document.querySelector(`#fc-${f.id} .fc-yutura-link`);
+      if(a) a.href = yuturaUrl(f);
+    }
+    return true;
+  }catch(e){
+    console.warn('ユーチュラ番号の取得に失敗:', f.name, e.message);
+    return false;
+  }
+}
+
+function scheduleYuturaResolve(delay){
+  if(!(typeof isExtensionContext !== 'undefined' && isExtensionContext)) return;
+  if(yuturaTimer) return;
+  yuturaTimer = setTimeout(async ()=>{
+    yuturaTimer = null;
+    const now = Date.now();
+    const f = follows.find(x => !x.yuturaId && ytChannelIdFromUrl(x.url || '')
+      && !(x.yuturaCheckedAt && now - x.yuturaCheckedAt < YUTURA_RETRY_MS));
+    if(!f){
+      // 未解決が無くなったら溜まっていた分を保存して終了
+      if(yuturaUnsaved){ yuturaUnsaved = 0; save(true, false); }
+      return;
+    }
+    const ok = await resolveYuturaId(f);
+    if(ok && ++yuturaUnsaved >= YUTURA_SAVE_EVERY){ yuturaUnsaved = 0; save(true, false); }
+    scheduleYuturaResolve(ok ? YUTURA_GAP_MS : YUTURA_ERROR_BACKOFF_MS);
+  }, delay);
+}
+// 起動直後のRSS取得と重ならないよう少し待ってから開始し、新規追加分のために定期的に再開する
+scheduleYuturaResolve(30000);
+setInterval(()=>scheduleYuturaResolve(0), 10*60*1000);
