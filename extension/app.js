@@ -1061,7 +1061,8 @@ async function autoFetchTitle(url){
   statusEl.textContent = '取得中...';
   statusEl.style.color = 'var(--text-faint)';
   try{
-    const raw = await fetchRSSRaw(url);
+    // URL入力時の名前自動取得はユーザー操作による1回きりの取得なので、休止中のプロキシも試す
+    const raw = await fetchRSSRaw(url, {ignoreCooldown:true});
     const {feedTitle} = parseRSS(raw);
     if(feedTitle && nameEl && !nameEl.value.trim()){
       nameEl.value = feedTitle;
@@ -1198,7 +1199,9 @@ async function doFetch(f){
 
   const fetchStartAt = Date.now();
   try{
-    const raw = await fetchRSSRaw(f.url);
+    // 動画を1件も取得できていない（登録直後など）チャンネルは、休止中のプロキシも含めて全て試す
+    // （取得失敗時もlastFetchedは記録されるため、postsの有無で判定する）
+    const raw = await fetchRSSRaw(f.url, {ignoreCooldown: !(f.posts && f.posts.length)});
     const {feedTitle, posts} = parseRSS(raw);
     // 久しぶり更新の検出: 取得前の最新動画リンクを控える
     const prevPosts = f.posts || [];
@@ -2076,15 +2079,23 @@ function openRevivalHistoryMobile(){ openRevivalHistory(); closeDrawer(); }
 // それだと委任リスナー（documentに1つだけ登録）までイベントが届かなくなり
 // モーダル内のボタンが反応しなくなる不具合の元になるため、
 // 代わりに「クリックされた要素がバックドロップ自身かどうか」で判定する。
+// 入力欄の文字をドラッグで選択し、マウスボタンをモーダルの外で離した場合も
+// ブラウザは背景への「click」として扱うため、そのままだと入力中のフォームが
+// 消えてしまう。押し始め（pointerdown）も背景上だった時だけ閉じる。
+let lastPointerDownTarget = null;
+document.addEventListener('pointerdown', e => { lastPointerDownTarget = e.target; }, true);
+function isBackdropClick(el, evt){
+  return evt.target === el && (lastPointerDownTarget === null || lastPointerDownTarget === el);
+}
 function closeModalContainerIfBackdrop(el, evt){
-  if(evt.target === el) document.getElementById('modalContainer').innerHTML = '';
+  if(isBackdropClick(el, evt)) document.getElementById('modalContainer').innerHTML = '';
 }
 function closeModalContainer(){
   document.getElementById('modalContainer').innerHTML = '';
 }
 // 個別の閉じる関数（closeApiKeyModal等）を持つモーダル用の汎用「背景クリックで閉じる」ラッパー
 function closeIfBackdrop(el, evt, closeFnName){
-  if(evt.target === el){
+  if(isBackdropClick(el, evt)){
     const fn = window[closeFnName];
     if(typeof fn === 'function') fn();
   }
@@ -3640,7 +3651,9 @@ async function addFollow(){
     if(btn){ btn.textContent = '確認中…'; btn.disabled = true; }
     const preCheckStart = Date.now();
     try{
-      const raw = await fetchRSSRaw(url);
+      // 休止中のプロキシも含めて全て試す（定期取得の失敗で休止中のものしか残っておらず、
+      // 1つ試しただけで「取得に失敗」と判定して登録できないことがあったため）
+      const raw = await fetchRSSRaw(url, {ignoreCooldown:true});
       const {posts} = parseRSS(raw);
       if(!posts.length){
         if(btn){ btn.textContent = orig; btn.disabled = false; }
@@ -3651,8 +3664,12 @@ async function addFollow(){
     }catch(e){
       if(btn){ btn.textContent = orig; btn.disabled = false; }
       addFetchLog({id:null, name: name || url, ok:false, proxy:lastUsedProxy, error:'登録時の取得エラー: '+e.message, ms:Date.now()-preCheckStart, attempts:lastProxyAttempts.slice(), stage:'add'});
-      alert('このURLの取得に失敗しました: ' + e.message + '\nURLが正しいかご確認のうえ、修正して登録してください。\n\n' + url);
-      return;
+      // 通信エラー（プロキシの混雑・タイムアウト等）はURLが正しくても起きるため、
+      // 登録をあきらめさせず、そのまま登録して後で自動取得する選択肢を出す
+      if(!confirm('このURLの取得に失敗しました: ' + e.message + '\n\n' +
+        '中継サーバー（プロキシ）が混み合っている可能性があります。\n' +
+        'このまま登録して、後で自動的に取得しますか？\n' +
+        '（URLが間違っている場合は「キャンセル」を押して修正してください）\n\n' + url)) return;
     }
     if(btn){ btn.textContent = orig; btn.disabled = false; }
   }

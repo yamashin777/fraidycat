@@ -149,7 +149,10 @@ async function fetchDirect(url){
   return text;
 }
 
-async function fetchRSSRaw(url){
+// opts.ignoreCooldown: 休止中のプロキシも含めて全て試す（登録時の確認など、
+// 1回きりで確実に結果が欲しい場面用。定期取得では休止判定を尊重する）
+async function fetchRSSRaw(url, opts){
+  const ignoreCooldown = !!(opts && opts.ignoreCooldown);
   let lastErr;
   const n = PROXIES.length;
   const attempts = []; // {proxy, ok, reason}
@@ -182,7 +185,7 @@ async function fetchRSSRaw(url){
   // 可能性もあるため、無駄でも試す方が成功率が上がる）。
   const available = [];
   for(let i=0; i<n; i++) if(now0 >= proxyCooldownUntil[i]) available.push(i);
-  if(available.length === 0){
+  if(available.length === 0 && !ignoreCooldown){
     const order2 = Array.from({length:n}, (_,i)=>i).sort((a,b)=>proxyCooldownUntil[a]-proxyCooldownUntil[b]);
     for(const i of order2){
       const pname = PROXY_NAMES[i] || `p${i}`;
@@ -213,7 +216,7 @@ async function fetchRSSRaw(url){
     const i = order[k];
     const pname = PROXY_NAMES[i] || `p${i}`;
     // クールダウン中のプロキシはスキップ（ログには残さない）
-    if(Date.now() < proxyCooldownUntil[i]) continue;
+    if(!ignoreCooldown && Date.now() < proxyCooldownUntil[i]) continue;
     lastUsedProxy = pname;
     if(typeof loadingCount !== 'undefined' && loadingCount > 0 && typeof updateFetchStatus === 'function') updateFetchStatus();
     try{
