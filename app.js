@@ -103,6 +103,9 @@ document.addEventListener('error', function(e){
   if(!el || !el.dataset) return;
   if(el.dataset.errorAction === 'hideSelf'){
     el.style.display = 'none';
+    // チャンネルのアイコン変更で古い画像URLが消えた可能性があるため、そのチャンネルだけ取り直す
+    const card = el.closest('.follow-card');
+    if(card && typeof refreshIconAfterError === 'function') refreshIconAfterError(Number(card.id.replace('fc-','')));
   } else if(el.dataset.errorAction === 'hideParent'){
     if(el.parentElement) el.parentElement.style.display = 'none';
   }
@@ -257,6 +260,8 @@ const FREQ_PILL = {
   '5分':'fp-rt','15分':'fp-daily','30分':'fp-weekly',
   '1時間':'fp-monthly','6時間':'fp-yearly'
 };
+// アイコン画像の読み込み失敗時に取り直したチャンネル（refreshIconAfterErrorで使用）
+const iconRetriedIds = new Set();
 // ユーチュラ番号の解決（ファイル末尾の「ユーチュラ」の処理）で使う設定値。
 // yuturaUrl()は起動直後の一覧描画（ファイル末尾まで読み込まれる前）から
 // 呼ばれるため、const定義はここ（描画より前）に置く必要がある。
@@ -2191,6 +2196,8 @@ function changeIcon(id, val){
   const url = val.trim();
   markLocalEdit();
   f.iconUrl = url || null;
+  // 手動で設定したアイコンは自動更新（refreshChannelInfo）で上書きしない。空にしたら自動に戻す
+  f.iconManual = !!url;
   save();
   render();
 }
@@ -4785,20 +4792,27 @@ if(follows.length){
   setTimeout(scheduleNext, 1000);
 }
 
-/* 起動時アイコン・登録者数自動取得（APIキーがある場合・5秒後にサイレント実行） */
-setTimeout(async ()=>{
-  if(!ytApiKey) return;
+/* アイコン・登録者数の自動取得（APIキーがある場合・起動5秒後と、以降6時間ごとにサイレント実行）
+   チャンネル側でアイコンが変更された時に追随できるよう、アイコンは1日1回確認する
+   （channels.listは50件で1ユニットのため、500件超でも1日の無料枠1万に対してごくわずか）。
+   手動で設定したアイコン（iconManual）は上書きしない。 */
+let channelInfoRefreshing = false;
+async function refreshChannelInfo(){
+  if(!ytApiKey || channelInfoRefreshing) return;
   const SUB_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 登録者数は30日で再取得
+  const ICON_MAX_AGE = 24 * 60 * 60 * 1000;     // アイコンは1日1回確認
   const now = Date.now();
-  // アイコン未取得、または登録者数が未取得/30日以上前のチャンネル
+  // アイコン未取得/1日以上未確認、または登録者数が未取得/30日以上前のチャンネル
   const needFetch = follows.filter(f=>{
     if(!ytChannelIdFromUrl(f.url)) return false;
     if(!f.iconUrl) return true;
+    if(!f.iconManual && (!f.iconCheckedAt || (now - f.iconCheckedAt) > ICON_MAX_AGE)) return true;
     if(f.subscriberCount == null) return true;
     if(!f.subscriberFetchedAt || (now - f.subscriberFetchedAt) > SUB_MAX_AGE) return true;
     return false;
   });
   if(!needFetch.length) return;
+  channelInfoRefreshing = true;
   const CHUNK = 50;
   for(let i=0; i<needFetch.length; i+=CHUNK){
     const chunk = needFetch.slice(i, i+CHUNK);
@@ -4814,18 +4828,41 @@ setTimeout(async ()=>{
       (json.items||[]).forEach(item=>{ itemMap[item.id]=item; });
       chunk.forEach(f=>{
         const chId = ytChannelIdFromUrl(f.url);
-        const iconUrl = itemMap[chId]?.snippet?.thumbnails?.default?.url;
-        if(iconUrl) f.iconUrl = iconUrl;
-        const subCount = itemMap[chId]?.statistics?.subscriberCount;
+        const item = itemMap[chId];
+        if(!item) return;
+        const iconUrl = item.snippet?.thumbnails?.default?.url;
+        if(iconUrl && !f.iconManual) f.iconUrl = iconUrl;
+        f.iconCheckedAt = Date.now();
+        const subCount = item.statistics?.subscriberCount;
         if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
       });
       save(false, false); // ループ中はlocalStorageのみ。起動時の自動取得なのでユーザー編集扱いにしない
       if(i+CHUNK < needFetch.length) await new Promise(r=>setTimeout(r,300));
     }catch(e){ break; }
   }
+  channelInfoRefreshing = false;
   debouncedRender();
   save(true, false); // 完了後に1回だけGitHub同期。起動時の自動取得なのでユーザー編集扱いにしない
-}, 5000);
+}
+setTimeout(refreshChannelInfo, 5000);
+// 拡張機能などタブを開きっぱなしの場合も1日1回の確認が回るよう、定期的に判定する
+setInterval(refreshChannelInfo, 6 * 60 * 60 * 1000);
+
+// アイコン画像の読み込みに失敗した時（チャンネル側のアイコン変更で古い画像URLが
+// 無効になった等）、そのチャンネルのアイコンだけすぐに取り直す。同じチャンネルは1回の起動中に1回まで。
+// （iconRetriedIdsは画像エラー処理から参照されるためファイル先頭側で定義している）
+function refreshIconAfterError(id){
+  if(!ytApiKey || !id || iconRetriedIds.has(id)) return;
+  const f = follows.find(x => x.id === id);
+  if(!f || f.iconManual || !ytChannelIdFromUrl(f.url || '')) return;
+  iconRetriedIds.add(id);
+  const oldUrl = f.iconUrl;
+  f.iconUrl = null; // fetchIconForFollowは未取得のものだけ取りに行くため
+  fetchIconForFollow(f).then(()=>{
+    if(!f.iconUrl) f.iconUrl = oldUrl; // 取れなかった場合は元に戻す
+    else if(f.iconUrl !== oldUrl){ f.iconCheckedAt = Date.now(); debouncedRender(); }
+  });
+}
 
 /* ── ユーチュラ（yutura.net）のチャンネル番号の解決 ──
    ユーチュラのチャンネルページ（/channel/70294/ 等）はユーチュラ独自の番号で、
