@@ -297,7 +297,17 @@ let revivalThresholdDays = parseInt(localStorage.getItem('fraidycat_revival_thre
 /* ── GitHub同期設定 ── */
 let ghToken = localStorage.getItem('fraidycat_gh_token') || '';
 let ghRepo  = localStorage.getItem('fraidycat_gh_repo')  || 'yamashin777/fraidycat';
-let ghPath  = localStorage.getItem('fraidycat_gh_path')  || 'data/follows.json';
+// 保存先ファイル。以前は data/follows.json だったが、更新されていない古い版のアプリ
+// （端末名の付かない "fraidycat sync <日時>" でコミットするもの）が平日夕方に古い一覧で
+// 上書きし、新しく登録したチャンネルが消える問題が起きたため（2026-10-13/14）、
+// 最新版は data/follows-v2.json を使う。古い版は旧ファイルにしか書き込めないため隔離される。
+const GH_LEGACY_PATH = 'data/follows.json';
+const GH_DEFAULT_PATH = 'data/follows-v2.json';
+let ghPath  = localStorage.getItem('fraidycat_gh_path')  || GH_DEFAULT_PATH;
+if(ghPath === GH_LEGACY_PATH){
+  ghPath = GH_DEFAULT_PATH;
+  try{ localStorage.setItem('fraidycat_gh_path', ghPath); }catch(e){}
+}
 let ghSyncEnabled = localStorage.getItem('fraidycat_gh_sync') === 'true';
 let ghSha = null; // 最新ファイルのSHA（更新に必要）
 
@@ -365,6 +375,8 @@ function addGhSyncLog(entry){
 }
 
 function saveGhSettings(token, repo, path, enabled){
+  // 設定画面に旧ファイル名が残っていても新ファイルに読み替える（古い版のアプリによる上書き対策）
+  if(!path || path === GH_LEGACY_PATH) path = GH_DEFAULT_PATH;
   ghToken = token; ghRepo = repo; ghPath = path; ghSyncEnabled = enabled;
   localStorage.setItem('fraidycat_gh_token',  token);
   localStorage.setItem('fraidycat_gh_repo',   repo);
@@ -610,7 +622,7 @@ function openGhSettingsModal(){
       <div class="form-row">
         <label class="form-label">保存先パス</label>
         <input class="form-input" id="gh-path" type="text"
-          value="${esc(ghPath)}" placeholder="data/follows.json">
+          value="${esc(ghPath)}" placeholder="data/follows-v2.json">
       </div>
       <div class="form-row" style="flex-direction:row;align-items:center;gap:10px">
         <input type="checkbox" id="gh-enabled" ${ghSyncEnabled || !ghToken ? 'checked' : ''}>
