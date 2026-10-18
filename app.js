@@ -1336,6 +1336,7 @@ function showToast(msg, duration){
 
 // ── 久しぶり更新（長期休眠からの復活）──
 let revivals = [];
+let revivalNoticeClosed = false; // 久しぶり通知カードを×で閉じたか（renderRevivalNotice参照）
 let revivalHistory = [];
 try{ const s=localStorage.getItem('fraidycat_revival_history'); if(s) revivalHistory=JSON.parse(s)||[]; }catch(e){ revivalHistory=[]; }
 const REVIVAL_HISTORY_MAX = 200;
@@ -1346,6 +1347,7 @@ function markRevival(f, gapDays, post){
   revivals = revivals.filter(r=>r.id !== f.id);
   revivals.unshift({id:f.id, name:f.name, gapDays, title:post.title, link:post.link, at:Date.now()});
   if(revivals.length > 30) revivals = revivals.slice(0,30);
+  revivalNoticeClosed = false; // 新しい「久しぶり」が来たら通知カードを再表示する
   renderRevivalPanel();
   if(!revivalHistory.some(r=>r.link === post.link)){
     revivalHistory.unshift({id:f.id, name:f.name, gapDays, title:post.title, link:post.link, at:Date.now()});
@@ -1470,10 +1472,58 @@ function renderRevivalHistory(){
 }
 
 // 以前は画面上部に固定表示するバナーだったが、上位のカードやヘッダーを
-// 覆い隠してしまう不具合報告があったため、常時表示はやめてヘッダー/
-// ドロワーの「🎉 久しぶり」ボタンに未確認件数のバッジを出すだけにした。
-// 詳細は久しぶり履歴モーダル（openRevivalHistory）の中で確認する。
+// 覆い隠してしまう不具合報告があったため、ヘッダー/ドロワーの「🎉 久しぶり」
+// ボタンに未確認件数のバッジを出す方式にした。ただしバッジだけでは気付きにくい
+// という要望があり、画面右下（スマホでは下部メニューの上）に小さな通知カードも
+// 出す。背景を覆わないので、表示中も一覧の操作はそのままできる。
+// ×で閉じてもバッジは残り、新しい「久しぶり」が来ると再び表示される。
+// （revivalNoticeClosedは起動直後の描画から参照されうるため、revivalsの隣で定義している）
+function closeRevivalNotice(){
+  revivalNoticeClosed = true;
+  renderRevivalNotice();
+}
+function openRevivalHistoryFromNotice(){
+  revivalNoticeClosed = true;
+  openRevivalHistory();
+}
+function renderRevivalNotice(){
+  let box = document.getElementById('revivalNotice');
+  if(!revivals.length || revivalNoticeClosed){
+    if(box) box.remove();
+    return;
+  }
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'revivalNotice';
+    box.className = 'rv-notice';
+    box.setAttribute('role', 'status');
+    box.setAttribute('aria-live', 'polite');
+    document.body.appendChild(box);
+  }
+  const shown = revivals.slice(0, 3);
+  const rest = revivals.length - shown.length;
+  box.innerHTML = `
+    <div class="rv-notice-head">
+      <span class="rv-notice-title">🎉 久しぶりに更新されたチャンネル（${revivals.length}件）</span>
+      <button class="rv-notice-x" data-click="1" data-action="closeRevivalNotice" title="この通知を閉じる（上部の数字は残ります）" aria-label="通知を閉じる">✕</button>
+    </div>
+    <div class="rv-notice-list">${shown.map(r=>`
+      <div class="rv-notice-item">
+        <span class="rv-badge">${r.gapDays}日ぶり</span>
+        <div class="rv-notice-text">
+          <span class="rv-name" data-click="1" data-action="openFollowPanel" data-args="[${r.id}]" title="fraidycatでこのチャンネルを開く">${esc(r.name)}</span>
+          <a class="rv-title" href="${esc(r.link)}" target="_blank" rel="noopener" title="${esc(r.title||'')}">${esc(r.title||'')}</a>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div class="rv-notice-foot">
+      ${rest > 0 ? `<span class="rv-notice-more">ほか${rest}件</span>` : ''}
+      <button class="rv-notice-open" data-click="1" data-action="openRevivalHistoryFromNotice">履歴を見る</button>
+    </div>`;
+}
+
 function renderRevivalPanel(){
+  renderRevivalNotice();
   const n = revivals.length;
   for(const id of ['revivalBadge','revivalBadgeMobile']){
     const el = document.getElementById(id);

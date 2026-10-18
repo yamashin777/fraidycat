@@ -402,6 +402,43 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .rv-title{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rv-x{flex-shrink:0;width:22px;height:22px;border:none;background:transparent;color:var(--text-faint);cursor:pointer;font-size:13px;border-radius:4px}
 .rv-x:hover{background:rgba(0,0,0,0.08)}
+/* 久しぶり更新の通知カード。背景を覆わず画面右下に浮かべるので、表示中も一覧を操作できる */
+.rv-notice{
+  position:fixed;right:16px;bottom:40px;z-index:60;
+  width:360px;max-width:calc(100vw - 32px);
+  background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--yamabuki);
+  border-radius:var(--radius);box-shadow:0 10px 30px rgba(23,48,76,0.18);
+  padding:10px 12px;animation:rvNoticeIn .25s ease-out;
+}
+@keyframes rvNoticeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.rv-notice-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.rv-notice-title{flex:1;font-size:13px;font-weight:700;color:var(--text)}
+.rv-notice-x{
+  flex-shrink:0;width:26px;height:26px;border:none;border-radius:4px;
+  background:transparent;color:var(--text-faint);cursor:pointer;font-size:13px;
+}
+.rv-notice-x:hover{background:var(--tag-bg);color:var(--text)}
+.rv-notice-list{display:flex;flex-direction:column;gap:6px}
+.rv-notice-item{display:flex;align-items:center;gap:8px;min-width:0}
+.rv-notice-text{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.rv-notice-text .rv-name{cursor:pointer;width:fit-content;max-width:100%}
+.rv-notice-text .rv-name:hover{color:var(--accent);text-decoration:underline}
+.rv-notice-text .rv-title{text-decoration:none}
+.rv-notice-text .rv-title:hover{color:var(--accent);text-decoration:underline}
+.rv-notice-foot{display:flex;align-items:center;gap:8px;margin-top:10px}
+.rv-notice-more{font-size:12px;color:var(--text-muted)}
+.rv-notice-open{
+  margin-left:auto;font-size:12px;font-weight:700;padding:5px 12px;border-radius:var(--radius);
+  border:none;background:var(--accent);color:#fff;cursor:pointer;
+}
+.rv-notice-open:hover{opacity:0.88}
+@media(max-width:640px){
+  /* スマホは下部メニューとステータスバーの上に、左右いっぱいで表示 */
+  .rv-notice{
+    left:8px;right:8px;width:auto;max-width:none;
+    bottom:calc(52px + max(8px, env(safe-area-inset-bottom)) + 30px);
+  }
+}
 #toast{
   position:fixed;left:50%;bottom:64px;transform:translateX(-50%) translateY(20px);
   background:var(--ai-deep);color:#fff;
