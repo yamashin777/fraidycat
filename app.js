@@ -67,9 +67,28 @@ document.addEventListener('click', function(e){
 // スマホでのタップ即応答用（onclick+ontouchend+preventDefaultの旧実装を踏襲）。
 // data-touchend="1"が付いた要素はtouchendの時点でpreventDefaultし、
 // 後から発火する合成clickイベントによる二重実行を防ぐ。
+// ただし指を動かした（スクロールした）後に離した場合はタップではないので反応させない。
+// 以前はこの判定が無く、iPhoneでドロワー（メニュー）をスクロールすると、指を置いた
+// ボタンが押された扱いになってメニューが閉じてしまっていた。
+let tapStart = null;
+document.addEventListener('touchstart', function(e){
+  const t = e.touches && e.touches[0];
+  const drawer = document.getElementById('drawer');
+  tapStart = t ? {x:t.clientX, y:t.clientY, drawerScroll: drawer ? drawer.scrollTop : 0} : null;
+}, {capture:true, passive:true});
+function isTapTouch(e){
+  if(!tapStart) return true;
+  const t = e.changedTouches && e.changedTouches[0];
+  if(!t) return true;
+  if(Math.abs(t.clientX - tapStart.x) > 10 || Math.abs(t.clientY - tapStart.y) > 10) return false;
+  // 慣性スクロール中に指を置いて止めた場合も、タップとは扱わない
+  const drawer = document.getElementById('drawer');
+  if(drawer && Math.abs(drawer.scrollTop - tapStart.drawerScroll) > 2) return false;
+  return true;
+}
 document.addEventListener('touchend', function(e){
   const el = e.target.closest('[data-touchend="1"]');
-  if(el){ e.preventDefault(); runDelegatedAction(el, e); }
+  if(el && isTapTouch(e)){ e.preventDefault(); runDelegatedAction(el, e); }
 });
 document.addEventListener('change', function(e){
   const el = e.target.closest('[data-change="1"]');
@@ -3032,7 +3051,11 @@ function openDrawer(){
 
     // event delegation でボタンのクリックを処理
     freqDiv.onclick = freqDiv.ontouchend = (e) => {
-      if(e.type === 'touchend') e.preventDefault();
+      if(e.type === 'touchend'){
+        // スクロールのために指を動かした場合はボタンを押した扱いにしない（メニューが閉じる不具合の対策）
+        if(!isTapTouch(e)) return;
+        e.preventDefault();
+      }
       const btn = e.target.closest('button[data-freq],button[data-tag],button[data-sort]');
       if(!btn) return;
       if(btn.dataset.sort){ setSortMode(btn.dataset.sort); }
