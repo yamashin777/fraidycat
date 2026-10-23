@@ -199,7 +199,7 @@ function showTextExportModal(title, text, filename){
         <button class="btn-ok" data-click="1" data-action="copyTextExportArea" data-args='["@el"]'>クリップボードにコピー</button>
         <a class="btn-ok" href="${url}" download="${filename}"
            style="text-decoration:none;display:inline-flex;align-items:center"
-           target="_blank" rel="noopener">ファイルとして保存</a>
+           target="_blank" rel="noopener" data-click="1" data-action="closeExportAfterSave">ファイルとして保存</a>
       </div>
       <textarea id="textExportArea" readonly
         style="width:100%;height:240px;font-family:var(--font-num);font-size:11px;
@@ -2175,6 +2175,14 @@ function isBackdropClick(el, evt){
 }
 function closeModalContainerIfBackdrop(el, evt){
   if(isBackdropClick(el, evt)) document.getElementById('modalContainer').innerHTML = '';
+}
+// エクスポート画面の「ファイルとして保存」を押した後、保存（ダウンロード）が始まるのを
+// 少し待ってから画面を閉じる。リンク本来の保存動作はそのまま行われる（preventDefaultしない）。
+function closeExportAfterSave(){
+  setTimeout(()=>{
+    document.getElementById('modalContainer').innerHTML = '';
+    showToast('ファイルの保存を開始しました', 2500);
+  }, 400);
 }
 function closeModalContainer(){
   document.getElementById('modalContainer').innerHTML = '';
@@ -4460,7 +4468,7 @@ function showExportModal(json){
         <button class="btn-ok" data-click="1" data-action="copyExportJson" data-args='["@el"]'>クリップボードにコピー</button>
         <a class="btn-ok" href="${url}" download="${fname}"
            style="text-decoration:none;display:inline-flex;align-items:center"
-           target="_blank" rel="noopener">ファイルとして保存</a>
+           target="_blank" rel="noopener" data-click="1" data-action="closeExportAfterSave">ファイルとして保存</a>
       </div>
       <textarea id="exportJsonArea" readonly
         style="width:100%;height:240px;font-family:var(--font-num);font-size:11px;
