@@ -1212,7 +1212,10 @@ function renderOrDefer(){
       ae.addEventListener('blur', function onBlur(){
         ae.removeEventListener('blur', onBlur);
         delete ae.dataset.pendingRerender;
-        render();
+        // blurはfocusoutより先に発火する。ここで即render()すると入力欄がDOMから外れ、
+        // その後のfocusout（data-blurの確定処理＝changeMemo等）がdocumentまで届かず、
+        // 入力した内容が保存されずに消えていた。確定処理が終わってから描画する。
+        setTimeout(render, 0);
       }, {once:true});
     }
     return;
