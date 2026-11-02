@@ -296,6 +296,15 @@ let snsUnsaved = 0;
 // SNSアイコンの画像（snsIconsHtmlで使用）
 // YouTubeのチャンネル概要と同じ、丸いブランドカラーのアイコン
 let snsSvgSeq = 0; // SNSアイコンのグラデーションidの連番（snsIconsHtmlで使用）
+// メモのリンク（linkifyMemo）で使う値。一覧描画から参照されるため、ファイル先頭側で定義している
+const MEMO_LINK_HINT = 'メモにURLを貼るとリンクになります（ページのタイトルが取れれば、タイトルで表示）。[議事録](https://…) のように書くと、「議事録」という文字のリンクになります。';
+let memoLinkTitles = {};      // URL → ページのタイトル（この端末に記憶）
+let memoLinkTitleFailed = {}; // URL → タイトルを取れなかった日時
+try{ memoLinkTitles = JSON.parse(localStorage.getItem('fraidycat_memo_link_titles') || '{}') || {}; }catch(e){}
+try{ memoLinkTitleFailed = JSON.parse(localStorage.getItem('fraidycat_memo_link_title_failed') || '{}') || {}; }catch(e){}
+const memoTitleInFlight = new Set();
+const memoTitleQueue = [];
+let memoTitleBusy = false;
 const SNS_ICONS = {
   x: {label:'X', svg:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#000"/><path fill="#fff" transform="translate(6 6) scale(.5)" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>'},
   instagram: {label:'Instagram', svg:'<svg viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="fcSnsIgGrad" cx="30%" cy="107%" r="150%"><stop offset="0" stop-color="#FFDD55"/><stop offset=".1" stop-color="#FFDD55"/><stop offset=".5" stop-color="#FF543E"/><stop offset="1" stop-color="#C837AB"/></radialGradient></defs><circle cx="12" cy="12" r="12" fill="url(#fcSnsIgGrad)"/><rect x="6.6" y="6.6" width="10.8" height="10.8" rx="3.2" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="15.4" cy="8.6" r=".9" fill="#fff"/></svg>'},
@@ -592,6 +601,9 @@ function mergeAutoFieldsFromRemote(remoteList){
       c = true;
     } else if(f.snsDesc === undefined && r.snsDesc !== undefined){ f.snsDesc = r.snsDesc; f.snsHubDesc = r.snsHubDesc; c = true; }
     if(newer(r.yuturaCheckedAt, f.yuturaCheckedAt)){ f.yuturaId = r.yuturaId; f.yuturaCheckedAt = r.yuturaCheckedAt; f.yuturaCheckVer = r.yuturaCheckVer; c = true; }
+    if(r.memoTitles && Object.keys(r.memoTitles).some(u => !(f.memoTitles || {})[u])){
+      f.memoTitles = {...r.memoTitles, ...(f.memoTitles || {})}; c = true;
+    }
     if(newer(r.subscriberFetchedAt, f.subscriberFetchedAt)){ f.subscriberCount = r.subscriberCount; f.subscriberFetchedAt = r.subscriberFetchedAt; c = true; }
     if(newer(r.lastFetched, f.lastFetched) && Array.isArray(r.posts) && r.posts.length && !f.loading){
       f.posts = r.posts.map(p => ({...p, date: p.date ? new Date(p.date) : null}));
@@ -1954,6 +1966,7 @@ function renderFollowCard(f){
         data-blur="1" data-action="changeMemo" data-args="${dargs([f.id, '@value'])}"
         data-enter-blur="1">
     </div>
+    <div class="fc-memo-hint">${MEMO_LINK_HINT}</div>
     <div class="fc-tag-row">
       <span class="fc-freq-label">アイコン：</span>
       ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" style="width:20px;height:20px;border-radius:4px;object-fit:cover;flex-shrink:0" data-error-action="hideSelf">` : ''}
@@ -2029,7 +2042,7 @@ function renderFollowCard(f){
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
           ${f.tags.map(t=>`<span class="fc-tag" data-click="1" data-action="setTag" data-args="${dargs([t])}" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
           ${chId ? `<a class="fc-yutura-link" href="${esc(yuturaUrl(f))}" target="_blank" rel="noopener" data-click="1" data-action="openYutura" data-args="${dargs([f.id, '@evt'])}" title="ユーチュラでこのチャンネルの情報を見る" aria-label="ユーチュラ"></a>` : ''}
-          ${f.memo ? `<span class="fc-memo-inline">📝 <span>${linkifyMemo(f.memo)}</span></span>` : ''}
+          ${f.memo ? `<span class="fc-memo-inline">📝 <span>${linkifyMemo(f.memo, f)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
           ${f.suspended ? '' : `<span class="freq-pill ${pillClass}">${freqLabel(f.freq)}</span>`}
           ${f.fetchTimes && f.fetchTimes.length>0 ? `<span class="sched-pill" title="個別指定: ${esc(f.fetchTimes)}">個別指定</span>` : ''}
@@ -2374,7 +2387,7 @@ function changeMemo(id, val){
   // カード上のメモインライン表示を更新
   const memoEl = document.querySelector(`#fc-${id} .fc-memo-inline`);
   if(memoEl){
-    if(f.memo){ memoEl.innerHTML = '📝 <span>' + linkifyMemo(f.memo) + '</span>'; memoEl.style.display=''; }
+    if(f.memo){ memoEl.innerHTML = '📝 <span>' + linkifyMemo(f.memo, f) + '</span>'; memoEl.style.display=''; }
     else memoEl.style.display='none';
   }
 }
@@ -3035,12 +3048,92 @@ function updateSortBtn(){
   });
 }
 
-function linkifyMemo(text){
+// メモの表示: [文字](URL) はその文字のリンクに、URLだけの場合はページのタイトル
+// （取得できるまで・取得できなければ短くしたURL）のリンクにする。
+// f を渡すと、そのチャンネルに保存済みのタイトル（f.memoTitles。GitHub同期で他端末と共有）も使う
+function linkifyMemo(text, f){
   if(!text) return '';
-  const escaped = esc(text);
-  return escaped.replace(/(https?:\/\/[^\s<>"]+)/g,
-    '<a href="$1" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline">$1</a>'
-  );
+  const s = String(text);
+  const re = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"（）()【】「」]+)/g;
+  let out = '', last = 0, m;
+  while((m = re.exec(s))){
+    out += esc(s.slice(last, m.index));
+    if(m[1] !== undefined){
+      out += memoLinkHtml(m[2], m[1]);
+    } else {
+      const url = m[3];
+      const title = (f && f.memoTitles && f.memoTitles[url]) || memoLinkTitles[url];
+      out += memoLinkHtml(url, title || shortMemoUrl(url));
+      if(!title) requestMemoLinkTitle(url);
+    }
+    last = re.lastIndex;
+  }
+  return out + esc(s.slice(last));
+}
+function memoLinkHtml(url, label){
+  return `<a class="memo-link" href="${esc(url)}" data-memo-url="${esc(url)}" target="_blank" rel="noopener" title="${esc(url)}">${esc(label)}</a>`;
+}
+// https://www.example.com/path/… → example.com/path/…（長い場合は省略）
+function shortMemoUrl(url){
+  let s = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+  return s.length > 40 ? s.slice(0, 39) + '…' : s;
+}
+// ページのタイトルを取りに行く（1件ずつ順番に。取れたらその端末に記憶し、表示中のリンクも書き換える）
+// （memoTitleQueue・memoTitleBusyはファイル先頭側で定義している）
+function requestMemoLinkTitle(url){
+  if(memoTitleQueue.includes(url) || memoTitleInFlight.has(url)) return;
+  const failedAt = memoLinkTitleFailed[url];
+  if(failedAt && Date.now() - failedAt < 24*60*60*1000) return; // 取れなかったURLは1日は再挑戦しない（中継サーバーの不調は一時的なことが多い）
+  memoTitleQueue.push(url);
+  if(!memoTitleBusy) drainMemoTitleQueue();
+}
+async function drainMemoTitleQueue(){
+  memoTitleBusy = true;
+  while(memoTitleQueue.length){
+    const url = memoTitleQueue.shift();
+    memoTitleInFlight.add(url);
+    let title = '';
+    try{
+      const html = await fetchHtmlViaProxy(url);
+      title = extractPageTitle(html);
+    }catch(e){ /* 取得失敗時はURLのまま表示 */ }
+    memoTitleInFlight.delete(url);
+    if(title){
+      memoLinkTitles[url] = title;
+      document.querySelectorAll('a.memo-link').forEach(a => { if(a.dataset.memoUrl === url) a.textContent = title; });
+      // メモにこのURLがあるチャンネルに保存し、GitHub同期で他の端末（Web版・スマホ）でもタイトル表示にする
+      let changed = false;
+      for(const f of follows){
+        if(f.memo && f.memo.includes(url) && !(f.memoTitles && f.memoTitles[url] === title)){
+          f.memoTitles = {...(f.memoTitles || {}), [url]: title};
+          changed = true;
+        }
+      }
+      if(changed) save(true, false);
+    } else {
+      memoLinkTitleFailed[url] = Date.now();
+    }
+    try{
+      localStorage.setItem('fraidycat_memo_link_titles', JSON.stringify(memoLinkTitles));
+      localStorage.setItem('fraidycat_memo_link_title_failed', JSON.stringify(memoLinkTitleFailed));
+    }catch(e){}
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  memoTitleBusy = false;
+}
+// HTMLからページのタイトルを取り出す（og:title を優先し、無ければ <title>）
+function extractPageTitle(html){
+  if(!html) return '';
+  const og = html.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+  const t = og ? og[1] : (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1];
+  if(!t) return '';
+  const ta = document.createElement('textarea');
+  ta.innerHTML = t; // &amp; などの文字参照を戻す
+  const title = ta.value.replace(/\s+/g, ' ').trim();
+  // UTF-8以外（EUC-JP・Shift_JIS等）のページは文字化けするため、その場合はタイトルを使わない（URLのまま表示）
+  if(/�/.test(title)) return '';
+  return title.length > 60 ? title.slice(0, 59) + '…' : title;
 }
 
 function setSearch(val){
@@ -3813,6 +3906,7 @@ function renderModal(){
           data-input="1" data-action="handleMemoInput" data-args='["@value"]'
           placeholder="このチャンネルに関するメモや備考..."
           style="resize:none;line-height:1.5">${esc(formData.memo)}</textarea>
+        <div class="form-hint">${MEMO_LINK_HINT}</div>
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" data-click="1" data-action="closeModal">キャンセル</button>
