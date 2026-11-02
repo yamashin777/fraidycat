@@ -1079,6 +1079,13 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .fc-sns-state-removed{background:var(--danger-light);color:var(--danger);font-weight:700}
 .fc-sns-input-removed{text-decoration:line-through;color:var(--text-muted)}
 .sns-rm-notice{border-left-color:var(--danger)}
+/* 消えたSNSリンクのアイコンにマウスを合わせた時の説明（showSnsRemovedTip） */
+#snsRemovedTip{
+  position:fixed;z-index:9000;display:none;max-width:280px;pointer-events:none;
+  background:var(--surface);color:var(--text);border:1px solid var(--danger);border-left:4px solid var(--danger);
+  border-radius:var(--radius);box-shadow:0 6px 20px rgba(23,48,76,0.18);
+  padding:7px 10px;font-size:12px;line-height:1.5;
+}
 .sns-rm-notice .rv-title{white-space:normal}
 /* メモ内のリンク（[文字](URL) やURLから作るリンク） */
 .memo-link{color:var(--accent);text-decoration:underline;text-underline-offset:2px;font-style:normal}

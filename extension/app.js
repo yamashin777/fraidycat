@@ -5502,6 +5502,32 @@ function renderSnsRemovedNotice(){
   const rv = document.getElementById('revivalNotice');
   box.style.bottom = rv ? `${parseFloat(getComputedStyle(rv).bottom) + rv.offsetHeight + 8}px` : '';
 }
+// 消えたSNSリンクのアイコンにマウスを合わせた時の説明。ブラウザ標準の説明（title）は
+// 出るまでに時間がかかり気付きにくいため、すぐ表示される説明を画面に重ねて出す
+function showSnsRemovedTip(a){
+  let tip = document.getElementById('snsRemovedTip');
+  if(!tip){
+    tip = document.createElement('div');
+    tip.id = 'snsRemovedTip';
+    tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+  }
+  tip.textContent = a.dataset.snsTip;
+  tip.style.display = 'block';
+  const r = a.getBoundingClientRect();
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = `${Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8))}px`;
+  tip.style.top = `${r.bottom + 6 + h > innerHeight ? r.top - h - 6 : r.bottom + 6}px`;
+}
+function hideSnsRemovedTip(){
+  const tip = document.getElementById('snsRemovedTip');
+  if(tip) tip.style.display = 'none';
+}
+document.addEventListener('mouseover', e => {
+  const a = e.target.closest && e.target.closest('.fc-sns-removed[data-sns-tip]');
+  if(a) showSnsRemovedTip(a); else hideSnsRemovedTip();
+});
+document.addEventListener('scroll', hideSnsRemovedTip, true);
 function snsOf(f){
   const out = snsAutoOf(f);
   // 手動の設定（設定パネルで入力）が最優先。空文字は「表示しない」
@@ -5572,8 +5598,9 @@ function snsIconsHtml(f){
     // YouTubeから消えたリンクは、薄くして赤い印を付けて表示する（設定パネルで「残す」「消す」を選ぶまで）
     const rm = sns[k] ? null : snsRemovedOf(f, k);
     const url = sns[k] || rm.url;
-    const title = rm ? `${SNS_ICONS[k].label}を開く（このリンクは${snsRemovedDate(rm)}にYouTubeから消えました）` : `${SNS_ICONS[k].label}を開く`;
-    return `<a class="fc-sns-link fc-sns-${k}${rm ? ' fc-sns-removed' : ''}" href="${esc(url)}" target="_blank" rel="noopener" title="${title}" aria-label="${title}">${SNS_ICONS[k].svg.replace(/fcSnsIgGrad/g, 'fcSnsIgGrad' + (++snsSvgSeq))}</a>`;
+    // 消えたリンクは、マウスを合わせるとすぐ出る説明（showSnsRemovedTip）で知らせる
+    const title = rm ? `⚠ SNSリンクの削除を検知（${snsRemovedDate(rm)}）：YouTubeのチャンネルから、この${SNS_ICONS[k].label}のリンクが無くなっていました。設定パネルで「残す」「消す」を選べます` : `${SNS_ICONS[k].label}を開く`;
+    return `<a class="fc-sns-link fc-sns-${k}${rm ? ' fc-sns-removed' : ''}" href="${esc(url)}" target="_blank" rel="noopener" ${rm ? `data-sns-tip="${title}"` : `title="${title}"`} aria-label="${title}">${SNS_ICONS[k].svg.replace(/fcSnsIgGrad/g, 'fcSnsIgGrad' + (++snsSvgSeq))}</a>`;
   }).join('')}</div>`;
 }
 
