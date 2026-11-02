@@ -4949,6 +4949,7 @@ async function refreshChannelInfo(){
     if(!ytChannelIdFromUrl(f.url)) return false;
     if(!f.iconUrl) return true;
     if(!f.iconManual && (!f.iconCheckedAt || (now - f.iconCheckedAt) > ICON_MAX_AGE)) return true;
+    if(f.snsDesc === undefined) return true; // 説明文のSNSリンクをまだ一度も取得していない
     if(f.subscriberCount == null) return true;
     if(!f.subscriberFetchedAt || (now - f.subscriberFetchedAt) > SUB_MAX_AGE) return true;
     return false;
@@ -4971,7 +4972,7 @@ async function refreshChannelInfo(){
       chunk.forEach(f=>{
         const chId = ytChannelIdFromUrl(f.url);
         const item = itemMap[chId];
-        if(!item) return;
+        if(!item){ if(f.snsDesc === undefined) f.snsDesc = {}; return; } // 削除済み等で取れないチャンネルを毎回取り直さない
         const iconUrl = item.snippet?.thumbnails?.default?.url;
         if(iconUrl && !f.iconManual) f.iconUrl = iconUrl;
         f.iconCheckedAt = Date.now();
@@ -5209,7 +5210,9 @@ function scheduleSnsResolve(delay){
       return;
     }
     const ok = await resolveSnsFromAbout(f);
-    if(ok && ++snsUnsaved >= SNS_SAVE_EVERY){ snsUnsaved = 0; save(true, false); debouncedRender(); }
+    // SNSが見つかったチャンネルはすぐ表示に反映する（保存はまとめて行う）
+    if(ok && f.snsAbout && Object.keys(f.snsAbout).length) debouncedRender();
+    if(ok && ++snsUnsaved >= SNS_SAVE_EVERY){ snsUnsaved = 0; save(true, false); }
     scheduleSnsResolve(ok ? SNS_GAP_MS : SNS_ERROR_BACKOFF_MS);
   }, delay);
 }
