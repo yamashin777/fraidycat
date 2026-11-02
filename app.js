@@ -5260,3 +5260,16 @@ function scheduleSnsResolve(delay){
 // 起動直後のRSS取得・ユーチュラ番号の解決と重ならないよう少し遅らせて開始し、新規追加分のため定期的に再開する
 scheduleSnsResolve(60000);
 setInterval(()=>scheduleSnsResolve(0), 10*60*1000);
+
+/* ── 拡張機能版のバージョン表示 ──
+   画面右下のバージョン（v2026.0815.xx）の横に、今ブラウザで実際に動いている
+   拡張機能のバージョン（manifest.jsonのversion）を併記する。chrome://extensions で
+   再読み込みしたかどうかを画面上で確認できるようにするため。Web版では何もしない。 */
+(function showExtensionVersion(){
+  if(!(typeof isExtensionContext !== 'undefined' && isExtensionContext)) return;
+  try{
+    const v = chrome.runtime.getManifest().version;
+    const el = document.getElementById('appVersion');
+    if(el && v) el.textContent = `${el.textContent} / 拡張機能 ${v}`;
+  }catch(e){}
+})();
