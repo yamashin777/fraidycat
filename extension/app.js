@@ -573,6 +573,37 @@ function scheduleSaveToGitHub(isUserEdit=true){
 let ghSaving = false; // 同時保存を防ぐロック
 let ghSavePending = false; // 保存中に来た要求を後で実行
 
+// 他端末が保存した版（remoteList）から、自動で集めた情報だけを、確認日時が新しい方に合わせて
+// 取り込む（ユーザーが編集する名前・タグ・メモ等や、チャンネルの追加・削除には触れない）。
+// 取り込んだチャンネル数を返す。
+function mergeAutoFieldsFromRemote(remoteList){
+  const rm = new Map(remoteList.map(r => [r.id, r]));
+  const newer = (a, b) => (a || 0) > (b || 0);
+  let changed = 0;
+  for(const f of follows){
+    const r = rm.get(f.id);
+    if(!r) continue;
+    let c = false;
+    if(newer(r.snsCheckedAt, f.snsCheckedAt)){ f.snsAbout = r.snsAbout; f.snsCheckedAt = r.snsCheckedAt; f.snsCheckVer = r.snsCheckVer; c = true; }
+    if(newer(r.iconCheckedAt, f.iconCheckedAt)){
+      if(!f.iconManual && r.iconUrl) f.iconUrl = r.iconUrl;
+      f.iconCheckedAt = r.iconCheckedAt;
+      if(r.snsDesc !== undefined){ f.snsDesc = r.snsDesc; f.snsHubDesc = r.snsHubDesc; }
+      c = true;
+    } else if(f.snsDesc === undefined && r.snsDesc !== undefined){ f.snsDesc = r.snsDesc; f.snsHubDesc = r.snsHubDesc; c = true; }
+    if(newer(r.yuturaCheckedAt, f.yuturaCheckedAt)){ f.yuturaId = r.yuturaId; f.yuturaCheckedAt = r.yuturaCheckedAt; f.yuturaCheckVer = r.yuturaCheckVer; c = true; }
+    if(newer(r.subscriberFetchedAt, f.subscriberFetchedAt)){ f.subscriberCount = r.subscriberCount; f.subscriberFetchedAt = r.subscriberFetchedAt; c = true; }
+    if(newer(r.lastFetched, f.lastFetched) && Array.isArray(r.posts) && r.posts.length && !f.loading){
+      f.posts = r.posts.map(p => ({...p, date: p.date ? new Date(p.date) : null}));
+      f.lastFetched = r.lastFetched;
+      f.error = r.error || null;
+      c = true;
+    }
+    if(c) changed++;
+  }
+  return changed;
+}
+
 async function saveToGitHub(retryCount){
   retryCount = retryCount || 0;
   if(!ghSyncEnabled || !ghToken || !ghRepo) return;
@@ -581,11 +612,30 @@ async function saveToGitHub(retryCount){
   ghSaving = true;
   try{
     // 保存前に必ず最新SHAを取得（衝突予防）
+    const knownSha = ghSha; // 自分が最後に読み込んだ／保存した時点の版
     try{
       const head = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
         {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.v3+json'},cache:'no-store'});
       if(head.ok){ const hj = await head.json(); if(hj.sha) ghSha = hj.sha; }
     }catch(e){ /* SHA取得失敗時は既存のghShaで試行 */ }
+    // 自分の知らない間に他の端末（拡張機能とWeb版のタブなど）が保存していた場合、そのまま
+    // 上書きすると相手が自動で集めた情報（SNSリンク・ユーチュラ番号・アイコン・登録者数・
+    // 取得した動画）を消してしまう。保存前に相手の版を読み、自動取得の情報だけ新しい方を取り込む。
+    if(knownSha && ghSha && ghSha !== knownSha){
+      try{
+        const rawRes = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
+          {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.raw+json'},cache:'no-store'});
+        if(rawRes.ok){
+          const remote = JSON.parse(await rawRes.text());
+          const remoteFollows = Array.isArray(remote) ? remote : remote.follows;
+          if(Array.isArray(remoteFollows)){
+            const n = mergeAutoFieldsFromRemote(remoteFollows);
+            if(n){ save(false, false); debouncedRender(); }
+            addGhSyncLog({type:'merge', ok:true, count:n});
+          }
+        }
+      }catch(e){ console.warn('他端末の版の取り込みに失敗:', e); }
+    }
 
     const data = follows.map(f=>({
       ...f,
@@ -694,12 +744,12 @@ function renderGhSyncLogSection(){
   const rows = ghSyncLog.slice(0, 15).map(l=>{
     const t = new Date(l.at);
     const time = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
-    const typeLabel = l.type === 'push' ? '↑保存' : '↓読込';
+    const typeLabel = l.type === 'push' ? '↑保存' : l.type === 'merge' ? '⇄取込' : '↓読込';
     const icon = l.ok ? '✓' : '✕';
     const color = l.ok ? '#0A8' : '#D33';
     let detail;
     if(l.ok){
-      detail = l.type === 'push' ? `${l.count}件アップロード` : `${l.remoteCount}件取得`;
+      detail = l.type === 'push' ? `${l.count}件アップロード` : l.type === 'merge' ? `他端末の自動取得情報を${l.count}件取り込み` : `${l.remoteCount}件取得`;
     } else {
       detail = esc(l.reason || '失敗');
     }
@@ -4496,6 +4546,8 @@ function exportJSON(){
       registeredAt: f.registeredAt, favorite: f.favorite, fetchTimes: f.fetchTimes,
       subscriberCount: f.subscriberCount, subscriberFetchedAt: f.subscriberFetchedAt,
       iconUrl: f.iconUrl,
+      // 自動で集めた情報（無くても次回自動で取り直されるが、バックアップとして含める）
+      yuturaId: f.yuturaId, snsAbout: f.snsAbout, snsDesc: f.snsDesc,
     }))
   };
   const json = JSON.stringify(data, null, 2);
