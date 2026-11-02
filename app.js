@@ -1963,7 +1963,28 @@ function renderFollowCard(f){
         title="アイコン画像のURLを設定できます"
         data-blur="1" data-action="changeIcon" data-args="${dargs([f.id, '@value'])}"
         data-enter-blur="1">
+    </div>
+    ${(() => {
+      // SNS（X・Instagram・TikTok）の手動登録・修正。自動で見つかったものは初期値として表示し、
+      // 書き換えると手動の値が優先される。空欄にするとそのSNSは表示しない。
+      const sns = snsOf(f);
+      const auto = {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+      const manual = f.snsManual || {};
+      return ['x', 'instagram', 'tiktok'].map(k => {
+        const state = (k in manual) ? (manual[k] ? '手動' : '非表示') : (auto[k] ? '自動' : '');
+        return `<div class="fc-tag-row">
+      <span class="fc-freq-label">${SNS_ICONS[k].label}：</span>
+      <input class="fc-tag-input" id="sns-input-${k}-${f.id}"
+        value="${esc(sns[k] || '')}"
+        placeholder="${k === 'tiktok' ? '@ユーザー名' : 'ユーザー名'} またはURL（空欄で非表示）"
+        title="空欄にして確定するとこのSNSは表示しません"
+        data-blur="1" data-action="changeSns" data-args="${dargs([f.id, k, '@value'])}"
+        data-enter-blur="1">
+      ${state ? `<span class="fc-sns-state">${state}</span>` : ''}
+      ${(k in manual) ? `<button class="fc-copy-btn" data-click="1" data-action="resetSns" data-args="${dargs([f.id, k])}" title="手動の設定をやめて自動で見つかったものに戻す">自動に戻す</button>` : ''}
     </div>`;
+      }).join('');
+    })()}`;
 
   const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
   const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
@@ -4568,7 +4589,7 @@ function exportJSON(){
       subscriberCount: f.subscriberCount, subscriberFetchedAt: f.subscriberFetchedAt,
       iconUrl: f.iconUrl,
       // 自動で集めた情報（無くても次回自動で取り直されるが、バックアップとして含める）
-      yuturaId: f.yuturaId, snsAbout: f.snsAbout, snsDesc: f.snsDesc,
+      yuturaId: f.yuturaId, snsAbout: f.snsAbout, snsDesc: f.snsDesc, snsManual: f.snsManual,
     }))
   };
   const json = JSON.stringify(data, null, 2);
@@ -5253,7 +5274,56 @@ const SNS_HUB_OWN_ACCOUNTS = new Set([
   'https://x.com/linktree_', 'https://www.instagram.com/linktree_/', 'https://www.tiktok.com/@linktree',
 ]);
 function snsOf(f){
-  return {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+  const out = {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+  // 手動の設定（設定パネルで入力）が最優先。空文字は「表示しない」
+  const manual = f.snsManual || {};
+  for(const k of Object.keys(manual)){
+    if(manual[k]) out[k] = manual[k]; else delete out[k];
+  }
+  return out;
+}
+// 設定パネルのSNS欄の確定。ユーザー名だけ（@付きも可）でもURLにして保存する
+function changeSns(id, key, val){
+  const f = follows.find(x => x.id === id);
+  if(!f) return;
+  const v = String(val || '').trim();
+  const auto = {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+  const current = snsOf(f)[key] || '';
+  let url = '';
+  if(v){
+    const handle = v.replace(/^@/, '');
+    // URL（x.com/… 等）が貼られた場合はそのまま、ユーザー名だけならURLにする
+    const looksUrl = /(?:^|\/\/|\.)(?:x|twitter|instagram|tiktok)\.com\//i.test(v);
+    const guess = looksUrl ? v
+      : key === 'x' ? `x.com/${handle}` : key === 'instagram' ? `instagram.com/${handle}` : `tiktok.com/@${handle}`;
+    const c = classifySnsUrl(guess);
+    if(!c || c[0] !== key){
+      showToast(`${SNS_ICONS[key].label}のユーザー名またはURLとして認識できませんでした`, 3000);
+      const input = document.getElementById(`sns-input-${key}-${id}`);
+      if(input) input.value = current;
+      return;
+    }
+    url = c[1];
+  }
+  if(url === current) return; // 変更なし
+  markLocalEdit();
+  f.snsManual = {...(f.snsManual || {})};
+  if(url && url === auto[key]) delete f.snsManual[key]; // 自動と同じなら手動扱いにしない
+  else f.snsManual[key] = url; // 空なら「表示しない」
+  if(!Object.keys(f.snsManual).length) delete f.snsManual;
+  save();
+  render();
+  showToast(url ? `${SNS_ICONS[key].label}を設定しました` : `${SNS_ICONS[key].label}を表示しないようにしました`, 2500);
+}
+function resetSns(id, key){
+  const f = follows.find(x => x.id === id);
+  if(!f || !f.snsManual) return;
+  markLocalEdit();
+  delete f.snsManual[key];
+  if(!Object.keys(f.snsManual).length) delete f.snsManual;
+  save();
+  render();
+  showToast(`${SNS_ICONS[key].label}を自動で見つかったものに戻しました`, 2500);
 }
 // （SNS_ICONSは一覧描画から参照されるため、ファイル先頭側で定義している）
 // チャンネルアイコンの下に並べるSNSアイコン（無ければ空文字）
