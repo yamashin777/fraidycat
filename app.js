@@ -293,6 +293,10 @@ const SNS_ERROR_BACKOFF_MS = 5*60*1000;            // 通信エラー時は5分�
 const SNS_SAVE_EVERY = 10;                         // この件数ごとにまとめて保存
 let snsTimer = null;
 let snsUnsaved = 0;
+// YouTubeから消えたSNSリンクの通知カード（renderSnsRemovedNotice）を×で閉じた日時。
+// これより後に消えたものが見つかると、また表示する。一覧描画から参照されるため、ここで定義している。
+let snsRemovedNoticeClosedAt = 0;
+try{ snsRemovedNoticeClosedAt = Number(localStorage.getItem('fraidycat_sns_removed_notice_closed')) || 0; }catch(e){}
 // SNSアイコンの画像（snsIconsHtmlで使用）
 // YouTubeのチャンネル概要と同じ、丸いブランドカラーのアイコン
 let snsSvgSeq = 0; // SNSアイコンのグラデーションidの連番（snsIconsHtmlで使用）
@@ -600,6 +604,7 @@ function mergeAutoFieldsFromRemote(remoteList){
       if(r.snsDesc !== undefined){ f.snsDesc = r.snsDesc; f.snsHubDesc = r.snsHubDesc; }
       c = true;
     } else if(f.snsDesc === undefined && r.snsDesc !== undefined){ f.snsDesc = r.snsDesc; f.snsHubDesc = r.snsHubDesc; c = true; }
+    if(mergeSnsRemoved(f, r)) c = true;
     if(newer(r.yuturaCheckedAt, f.yuturaCheckedAt)){ f.yuturaId = r.yuturaId; f.yuturaCheckedAt = r.yuturaCheckedAt; f.yuturaCheckVer = r.yuturaCheckVer; c = true; }
     if(r.memoTitles && Object.keys(r.memoTitles).some(u => !(f.memoTitles || {})[u])){
       f.memoTitles = {...r.memoTitles, ...(f.memoTitles || {})}; c = true;
@@ -1981,19 +1986,24 @@ function renderFollowCard(f){
       // SNS（X・Instagram・TikTok）の手動登録・修正。自動で見つかったものは初期値として表示し、
       // 書き換えると手動の値が優先される。空欄にするとそのSNSは表示しない。
       const sns = snsOf(f);
-      const auto = {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+      const auto = snsAutoOf(f);
       const manual = f.snsManual || {};
       return ['x', 'instagram', 'tiktok'].map(k => {
+        // YouTubeから消えたURLは欄に残し、「削除」の印と「残す」「消す」のボタンを出す
+        const rm = snsRemovedOf(f, k);
         const state = (k in manual) ? (manual[k] ? '手動' : '非表示') : (auto[k] ? '自動' : '');
         return `<div class="fc-tag-row">
       <span class="fc-freq-label">${SNS_ICONS[k].label}：</span>
-      <input class="fc-tag-input" id="sns-input-${k}-${f.id}"
-        value="${esc(sns[k] || '')}"
+      <input class="fc-tag-input${rm ? ' fc-sns-input-removed' : ''}" id="sns-input-${k}-${f.id}"
+        value="${esc(sns[k] || (rm ? rm.url : ''))}"
         placeholder="${k === 'tiktok' ? '@ユーザー名' : 'ユーザー名'} またはURL（空欄で非表示）"
         title="空欄にして確定するとこのSNSは表示しません"
         data-blur="1" data-action="changeSns" data-args="${dargs([f.id, k, '@value'])}"
         data-enter-blur="1">
-      ${state ? `<span class="fc-sns-state">${state}</span>` : ''}
+      ${rm ? `<span class="fc-sns-state fc-sns-state-removed" title="${snsRemovedDate(rm)}の確認で、YouTubeのチャンネルにこのリンクが無くなっていました">YouTubeから削除（${snsRemovedDate(rm)}）</span>
+      <button class="fc-copy-btn" data-click="1" data-action="keepRemovedSns" data-args="${dargs([f.id, k])}" title="このリンクを手動の設定として残し、アイコンも今まで通り表示する">残す</button>
+      <button class="fc-copy-btn" data-click="1" data-action="dropRemovedSns" data-args="${dargs([f.id, k])}" title="このリンクとアイコンの表示をやめる">消す</button>`
+        : state ? `<span class="fc-sns-state">${state}</span>` : ''}
       ${(k in manual) ? `<button class="fc-copy-btn" data-click="1" data-action="resetSns" data-args="${dargs([f.id, k])}" title="手動の設定をやめて自動で見つかったものに戻す">自動に戻す</button>` : ''}
     </div>`;
       }).join('');
@@ -3377,6 +3387,7 @@ function render(){
   renderSidebar();
   renderMain();
   renderTags();
+  renderSnsRemovedNotice();
   updateSortBtn();
   if(main && !skipScrollRestore && listChanged){
     main.scrollTop = 0;
@@ -4683,7 +4694,7 @@ function exportJSON(){
       subscriberCount: f.subscriberCount, subscriberFetchedAt: f.subscriberFetchedAt,
       iconUrl: f.iconUrl,
       // 自動で集めた情報（無くても次回自動で取り直されるが、バックアップとして含める）
-      yuturaId: f.yuturaId, snsAbout: f.snsAbout, snsDesc: f.snsDesc, snsManual: f.snsManual,
+      yuturaId: f.yuturaId, snsAbout: f.snsAbout, snsDesc: f.snsDesc, snsManual: f.snsManual, snsRemoved: f.snsRemoved,
     }))
   };
   const json = JSON.stringify(data, null, 2);
@@ -5170,9 +5181,11 @@ async function refreshChannelInfo(){
         if(iconUrl && !f.iconManual) f.iconUrl = iconUrl;
         f.iconCheckedAt = Date.now();
         // チャンネル説明文に書かれたSNS（X・Instagram・TikTok）のURLも拾う（snsIconsHtml参照）
+        const snsBefore = f.snsDesc === undefined ? null : snsAutoOf(f);
         f.snsDesc = extractSnsFromText(item.snippet?.description || '');
         // lit.link等のリンクまとめページは、拡張機能がたどってSNSを探す（resolveSnsFromAbout）
         f.snsHubDesc = findSnsHubUrl(item.snippet?.description || '');
+        if(snsBefore) noteSnsRemovals(f, snsBefore);
         const subCount = item.statistics?.subscriberCount;
         if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
       });
@@ -5367,8 +5380,130 @@ const SNS_HUB_OWN_ACCOUNTS = new Set([
   'https://x.com/litlink_jp', 'https://www.instagram.com/litlink_jp/', 'https://www.tiktok.com/@litlink_jp',
   'https://x.com/linktree_', 'https://www.instagram.com/linktree_/', 'https://www.tiktok.com/@linktree',
 ]);
+// 自動で見つかったSNS（説明文＋概要ページのリンク欄）
+function snsAutoOf(f){
+  return {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+}
+// YouTubeから消えたSNSリンク（「削除」の印が付いていて、まだ「残す」「消す」を選んでいないもの）。
+// 手動で設定したSNSは手動の値が優先されるので対象外
+function snsRemovedOf(f, key){
+  const e = (f.snsRemoved || {})[key];
+  if(!e || e.done || (key in (f.snsManual || {}))) return null;
+  return e;
+}
+// 自動の調べ直しで、前回まであったSNSのURLがYouTubeから消えていたら、すぐには消さずに
+// 「削除」の印を付けて残す（設定パネルにURLを残し、通知カードで知らせる）。
+// もう一度YouTubeに載ったら印を外す。新しく印を付けた数を返す
+function noteSnsRemovals(f, before){
+  const after = snsAutoOf(f);
+  const manual = f.snsManual || {};
+  const removed = {...(f.snsRemoved || {})};
+  let added = 0;
+  for(const k of ['x', 'instagram', 'tiktok']){
+    if(after[k]){ delete removed[k]; continue; }
+    if(before[k] && !(k in manual) && !removed[k]){ removed[k] = {url: before[k], at: Date.now()}; added++; }
+  }
+  if(Object.keys(removed).length) f.snsRemoved = removed; else delete f.snsRemoved;
+  return added;
+}
+// 他端末の「削除」の印を取り込む（mergeAutoFieldsFromRemote参照）。新しく調べた側の印を使い、
+// どちらかの端末で「消す」を選んだものはその選択を残す。変わったらtrue
+function mergeSnsRemoved(f, r){
+  const checkedAt = x => Math.max(x.snsCheckedAt || 0, x.iconCheckedAt || 0);
+  const remoteNewer = checkedAt(r) > checkedAt(f);
+  const base = {...((remoteNewer ? r.snsRemoved : f.snsRemoved) || {})};
+  const other = (remoteNewer ? f.snsRemoved : r.snsRemoved) || {};
+  for(const k of Object.keys(base)){
+    if(other[k] && other[k].done && other[k].url === base[k].url) base[k] = other[k];
+  }
+  const next = Object.keys(base).length ? base : undefined;
+  if(JSON.stringify(next) === JSON.stringify(f.snsRemoved)) return false;
+  if(next) f.snsRemoved = next; else delete f.snsRemoved;
+  return true;
+}
+// 設定パネルの「残す」：消えたURLを手動の設定として残し、アイコンも今まで通り表示する
+function keepRemovedSns(id, key){
+  const f = follows.find(x => x.id === id);
+  const e = f && snsRemovedOf(f, key);
+  if(!e) return;
+  markLocalEdit();
+  f.snsManual = {...(f.snsManual || {}), [key]: e.url};
+  delete f.snsRemoved[key];
+  if(!Object.keys(f.snsRemoved).length) delete f.snsRemoved;
+  save();
+  render();
+  showToast(`${SNS_ICONS[key].label}のリンクを残しました（手動の設定になります）`, 2500);
+}
+// 設定パネルの「消す」：消えたURLの表示をやめる（他端末で印が付き直らないよう、消した記録は残す）
+function dropRemovedSns(id, key){
+  const f = follows.find(x => x.id === id);
+  const e = f && snsRemovedOf(f, key);
+  if(!e) return;
+  markLocalEdit();
+  f.snsRemoved = {...f.snsRemoved, [key]: {...e, done: true}};
+  save();
+  render();
+  showToast(`${SNS_ICONS[key].label}のリンクを消しました`, 2500);
+}
+function snsRemovedDate(e){
+  const d = new Date(e.at);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+// YouTubeから消えたSNSリンクの通知カード（画面右下）。「久しぶり」の通知カードと同じく
+// 背景を覆わないので、表示中も一覧を操作できる。×で閉じると、次に新しく消えたものが
+// 見つかるまで表示しない（設定パネルの「削除」の印とアイコンの表示はそのまま残る）
+function closeSnsRemovedNotice(){
+  snsRemovedNoticeClosedAt = Date.now();
+  try{ localStorage.setItem('fraidycat_sns_removed_notice_closed', String(snsRemovedNoticeClosedAt)); }catch(e){}
+  renderSnsRemovedNotice();
+}
+function renderSnsRemovedNotice(){
+  const items = [];
+  for(const f of follows){
+    const keys = ['x', 'instagram', 'tiktok'].filter(k => snsRemovedOf(f, k));
+    if(!keys.length) continue;
+    const at = Math.max(...keys.map(k => f.snsRemoved[k].at || 0));
+    items.push({f, keys, at});
+  }
+  let box = document.getElementById('snsRemovedNotice');
+  if(!items.length || !items.some(it => it.at > snsRemovedNoticeClosedAt)){
+    if(box) box.remove();
+    return;
+  }
+  items.sort((a, b) => b.at - a.at);
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'snsRemovedNotice';
+    box.className = 'rv-notice sns-rm-notice';
+    box.setAttribute('role', 'status');
+    box.setAttribute('aria-live', 'polite');
+    document.body.appendChild(box);
+  }
+  const shown = items.slice(0, 3);
+  const rest = items.length - shown.length;
+  box.innerHTML = `
+    <div class="rv-notice-head">
+      <span class="rv-notice-title">⚠ YouTubeから消えたSNSリンク（${items.length}件）</span>
+      <button class="rv-notice-x" data-click="1" data-action="closeSnsRemovedNotice" title="この通知を閉じる（設定パネルの「削除」の印は残ります）" aria-label="通知を閉じる">✕</button>
+    </div>
+    <div class="rv-notice-list">${shown.map(it => `
+      <div class="rv-notice-item">
+        <div class="rv-notice-text">
+          <span class="rv-name" data-click="1" data-action="openFollowPanel" data-args="[${it.f.id}]" title="このチャンネルの設定パネルを開く">${esc(it.f.name)}</span>
+          <span class="rv-title">${it.keys.map(k => `${SNS_ICONS[k].label}（${snsRemovedDate(it.f.snsRemoved[k])}）`).join('・')}</span>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div class="rv-notice-foot">
+      ${rest > 0 ? `<span class="rv-notice-more">ほか${rest}件</span>` : ''}
+      <span class="rv-notice-more" style="margin-left:auto">名前を押すと設定パネルで「残す」「消す」を選べます</span>
+    </div>`;
+  // 「久しぶり」の通知カードが出ていれば、その上に重ねずに並べる
+  const rv = document.getElementById('revivalNotice');
+  box.style.bottom = rv ? `${parseFloat(getComputedStyle(rv).bottom) + rv.offsetHeight + 8}px` : '';
+}
 function snsOf(f){
-  const out = {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+  const out = snsAutoOf(f);
   // 手動の設定（設定パネルで入力）が最優先。空文字は「表示しない」
   const manual = f.snsManual || {};
   for(const k of Object.keys(manual)){
@@ -5381,8 +5516,9 @@ function changeSns(id, key, val){
   const f = follows.find(x => x.id === id);
   if(!f) return;
   const v = String(val || '').trim();
-  const auto = {...(f.snsDesc || {}), ...(f.snsAbout || {})};
-  const current = snsOf(f)[key] || '';
+  const auto = snsAutoOf(f);
+  // YouTubeから消えたURLも欄に残して表示しているので、そのまま確定しただけなら変更なしとする
+  const current = snsOf(f)[key] || snsRemovedOf(f, key)?.url || '';
   let url = '';
   if(v){
     const handle = v.replace(/^@/, '');
@@ -5405,6 +5541,10 @@ function changeSns(id, key, val){
   if(url && url === auto[key]) delete f.snsManual[key]; // 自動と同じなら手動扱いにしない
   else f.snsManual[key] = url; // 空なら「表示しない」
   if(!Object.keys(f.snsManual).length) delete f.snsManual;
+  if(f.snsRemoved && f.snsRemoved[key]){ // 自分で設定し直したので「削除」の印は外す
+    delete f.snsRemoved[key];
+    if(!Object.keys(f.snsRemoved).length) delete f.snsRemoved;
+  }
   save();
   render();
   showToast(url ? `${SNS_ICONS[key].label}を設定しました` : `${SNS_ICONS[key].label}を表示しないようにしました`, 2500);
@@ -5426,11 +5566,15 @@ function resetSns(id, key){
 // （snsSvgSeqは一覧描画から参照されるため、ファイル先頭側で定義している）
 function snsIconsHtml(f){
   const sns = snsOf(f);
-  const keys = ['x', 'instagram', 'tiktok'].filter(k => sns[k]);
+  const keys = ['x', 'instagram', 'tiktok'].filter(k => sns[k] || snsRemovedOf(f, k));
   if(!keys.length) return '';
-  return `<div class="fc-sns">${keys.map(k =>
-    `<a class="fc-sns-link fc-sns-${k}" href="${esc(sns[k])}" target="_blank" rel="noopener" title="${SNS_ICONS[k].label}を開く" aria-label="${SNS_ICONS[k].label}">${SNS_ICONS[k].svg.replace(/fcSnsIgGrad/g, 'fcSnsIgGrad' + (++snsSvgSeq))}</a>`
-  ).join('')}</div>`;
+  return `<div class="fc-sns">${keys.map(k => {
+    // YouTubeから消えたリンクは、薄くして赤い印を付けて表示する（設定パネルで「残す」「消す」を選ぶまで）
+    const rm = sns[k] ? null : snsRemovedOf(f, k);
+    const url = sns[k] || rm.url;
+    const title = rm ? `${SNS_ICONS[k].label}を開く（このリンクは${snsRemovedDate(rm)}にYouTubeから消えました）` : `${SNS_ICONS[k].label}を開く`;
+    return `<a class="fc-sns-link fc-sns-${k}${rm ? ' fc-sns-removed' : ''}" href="${esc(url)}" target="_blank" rel="noopener" title="${title}" aria-label="${title}">${SNS_ICONS[k].svg.replace(/fcSnsIgGrad/g, 'fcSnsIgGrad' + (++snsSvgSeq))}</a>`;
+  }).join('')}</div>`;
 }
 
 // 概要ページのリンク欄を読み取る。成功（見つかった／無かった）なら true、通信エラーなら false
@@ -5442,8 +5586,12 @@ async function resolveSnsFromAbout(f){
       {signal:AbortSignal.timeout(20000), credentials:'omit', cache:'no-store'});
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const html = await r.text();
-    const about = {};
+    // YouTubeのページの作りが変わる等で読み取れない時に、全チャンネルのSNSを「消えた」と
+    // 誤って判断しないよう、読み取れる形のページかを確かめる
+    const pageOk = html.includes('ytInitialData');
+    const about = pageOk ? {} : {...(f.snsAbout || {})};
     let hub = null;
+    let hubFailed = false;
     const re = /"channelExternalLinkViewModel":\{"title":\{"content":"[^"]*"\},"link":\{"content":"([^"]+)"/g;
     for(const m of html.matchAll(re)){
       // ページ内のJSONでは & が & という文字列で書かれているので戻す
@@ -5463,10 +5611,14 @@ async function resolveSnsFromAbout(f){
         if(hr.ok){
           const found = extractSnsFromText(await hr.text());
           for(const k of missing) if(found[k] && !SNS_HUB_OWN_ACCOUNTS.has(found[k])) about[k] = found[k];
-        }
-      }catch(e){ console.warn('リンクまとめページの取得に失敗:', f.name, hub, e.message); }
+        } else hubFailed = true;
+      }catch(e){ hubFailed = true; console.warn('リンクまとめページの取得に失敗:', f.name, hub, e.message); }
+      // まとめページが読めなかった時は、前回そこで見つけたものを残す（「消えた」と誤って判断しないため）
+      if(hubFailed) for(const k of missing) if(!about[k] && (f.snsAbout || {})[k]) about[k] = f.snsAbout[k];
     }
+    const before = f.snsCheckedAt ? snsAutoOf(f) : null;
     f.snsAbout = about;
+    if(before) noteSnsRemovals(f, before);
     f.snsCheckedAt = Date.now();
     f.snsCheckVer = SNS_CHECK_VER;
     return true;
@@ -5489,7 +5641,7 @@ function scheduleSnsResolve(delay){
     }
     const ok = await resolveSnsFromAbout(f);
     // SNSが見つかったチャンネルはすぐ表示に反映する（保存はまとめて行う）
-    if(ok && f.snsAbout && Object.keys(f.snsAbout).length) debouncedRender();
+    if(ok && ((f.snsAbout && Object.keys(f.snsAbout).length) || f.snsRemoved)) debouncedRender();
     if(ok && ++snsUnsaved >= SNS_SAVE_EVERY){ snsUnsaved = 0; save(true, false); }
     scheduleSnsResolve(ok ? SNS_GAP_MS : SNS_ERROR_BACKOFF_MS);
   }, delay);
