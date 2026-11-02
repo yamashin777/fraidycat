@@ -261,6 +261,35 @@ body{display:flex;flex-direction:column;min-height:100vh}
   border-radius:var(--radius);padding:4px 10px;
 }
 .search-box:focus-within{background:var(--surface);border-color:var(--accent-mid)}
+/* 一覧の列数切り替え（検索欄の左）。検索欄の代わりにこちらを右寄せの起点にする */
+.col-toggle{
+  margin-left:auto;display:flex;gap:2px;flex-shrink:0;
+  background:var(--tag-bg);border:1px solid var(--border);border-radius:var(--radius);padding:2px;
+}
+.col-toggle + .search-box{margin-left:8px}
+.col-btn{
+  font-size:12px;padding:3px 10px;border:none;border-radius:4px;cursor:pointer;white-space:nowrap;
+  background:transparent;color:var(--text-muted);font-family:var(--font-ui);
+}
+.col-btn:hover{color:var(--text)}
+.col-btn.active{background:var(--surface);color:var(--accent);font-weight:700;box-shadow:0 1px 2px rgba(23,48,76,0.15)}
+/* 2列・3列表示（チャンネル一覧のみ。renderChannelListがクラスを付ける） */
+/* grid-auto-rows:max-content が無いと、overflow:hiddenのカードは高さの下限が0扱いになり、
+   画面の高さに収めようとして行が潰れて線のように表示されてしまう */
+.main.grid-cols-2,.main.grid-cols-3{display:grid;gap:4px 8px;align-content:start;grid-auto-rows:max-content}
+.main.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.main.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.main.grid-cols-2 .follow-card,.main.grid-cols-3 .follow-card{margin-bottom:0}
+/* 開いたカード（設定パネル）と読み込み中表示は横幅いっぱいに */
+.main.grid-cols-2 .follow-card.expanded,.main.grid-cols-3 .follow-card.expanded,
+.main.grid-cols-2 #scroll-sentinel,.main.grid-cols-3 #scroll-sentinel{grid-column:1/-1}
+/* 列が狭いので、チャンネル名の行の情報は折り返して表示 */
+.main.grid-cols-2 .fc-top,.main.grid-cols-3 .fc-top{flex-wrap:wrap}
+@media(max-width:640px){
+  /* スマホは常に1列（列数ボタンも並べ替えバーごと非表示） */
+  .main.grid-cols-2,.main.grid-cols-3{display:block}
+  .main.grid-cols-2 .follow-card,.main.grid-cols-3 .follow-card{margin-bottom:4px}
+}
 .search-input{
   border:none;background:transparent;outline:none;
   font-size:13px;color:var(--text);width:180px;

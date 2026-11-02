@@ -279,6 +279,9 @@ const FREQ_PILL = {
   '5分':'fp-rt','15分':'fp-daily','30分':'fp-weekly',
   '1時間':'fp-monthly','6時間':'fp-yearly'
 };
+// チャンネル一覧（チャンネル順・登録順など）を何列で表示するか（1〜3）。端末ごとに記憶する。
+// 一覧描画（renderChannelList）から参照されるため、描画より前のここで定義している。
+let channelCols = Math.min(3, Math.max(1, parseInt(localStorage.getItem('fraidycat_channel_cols'), 10) || 1));
 // アイコン画像の読み込み失敗時に取り直したチャンネル（refreshIconAfterErrorで使用）
 const iconRetriedIds = new Set();
 // ユーチュラ番号の解決（ファイル末尾の「ユーチュラ」の処理）で使う設定値。
@@ -1789,9 +1792,9 @@ function openFollowPanel(id){
   // 含まれるページまで強制的に追加読み込みしてから表示・スクロールする。
   const idx = currentFiltered.findIndex(x=>x.id===f.id);
   if(idx >= 0){
-    const targetPage = Math.floor(idx / PAGE_SIZE);
+    const targetPage = Math.floor(idx / pageSize());
     let guard = 0;
-    while(currentPage <= targetPage && currentPage * PAGE_SIZE < currentFiltered.length && guard < 500){
+    while(currentPage <= targetPage && currentPage * pageSize() < currentFiltered.length && guard < 500){
       renderChannelList(currentFiltered, true);
       guard++;
     }
@@ -3480,7 +3483,21 @@ function tlCard(p, mode){
 
 /* 仮想スクロール用ページング */
 let currentPage = 0;
-const PAGE_SIZE = 30; // 一度に表示する件数
+const PAGE_SIZE = 30; // 一度に表示する件数（1列の場合。列数を増やした分だけ増やす）
+function pageSize(){ return PAGE_SIZE * channelCols; }
+
+// 一覧の列数を切り替える（検索欄の左の「1列/2列/3列」ボタン）
+function setChannelCols(n){
+  channelCols = Math.min(3, Math.max(1, Number(n) || 1));
+  try{ localStorage.setItem('fraidycat_channel_cols', String(channelCols)); }catch(e){}
+  render();
+}
+function updateColButtons(){
+  for(let n=1; n<=3; n++){
+    const b = document.getElementById('colBtn' + n);
+    if(b){ b.classList.toggle('active', channelCols === n); b.setAttribute('aria-pressed', channelCols === n ? 'true' : 'false'); }
+  }
+}
 let currentFiltered = []; // 現在のフィルター済みリスト
 
 let infiniteScrollObserver = null;
@@ -3490,11 +3507,15 @@ function renderChannelList(list, append=false){
   if(!append){
     main.innerHTML = '';
     currentPage = 0;
+    // 2列・3列表示はチャンネル一覧の時だけ（新着順などのタイムライン表示はrenderMainで解除）
+    main.classList.toggle('grid-cols-2', channelCols === 2);
+    main.classList.toggle('grid-cols-3', channelCols === 3);
+    updateColButtons();
     // 既存のObserverを解除
     if(infiniteScrollObserver){ infiniteScrollObserver.disconnect(); infiniteScrollObserver=null; }
   }
-  const start = currentPage * PAGE_SIZE;
-  const end = start + PAGE_SIZE;
+  const start = currentPage * pageSize();
+  const end = start + pageSize();
   const chunk = list.slice(start, end);
 
   let html = chunk.map(f=>renderFollowCard(f)).join('');
@@ -3537,6 +3558,9 @@ function loadMoreChannels(){
 
 function renderMain(){
   const main = document.getElementById('main');
+  // 列表示はチャンネル一覧（renderChannelList）が必要に応じて付け直す。タイムライン表示等では1列に戻す
+  main.classList.remove('grid-cols-2', 'grid-cols-3');
+  updateColButtons();
   let filtered = follows.filter(f=>{
     // 検索クエリがある場合は検索のみで絞り込む
     if(searchQuery){
