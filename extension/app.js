@@ -3250,15 +3250,36 @@ function closeDrawer(){
 })();
 
 let skipScrollRestore = false;
+let lastRenderedListKey = null; // 前回描画した一覧の条件（render参照）
 
 function render(){
   const main = document.getElementById('main');
   const scrollTop = main ? main.scrollTop : 0;
+  const pagesBefore = currentPage; // 描き直す前に読み込み済みだったページ数
+  // 表示する一覧そのもの（タグ・頻度・並べ替え・検索・列数）が前回の描画から変わった時は先頭から表示する
+  const listKey = [sortMode, activeTag, activeFreq, searchQuery, channelCols].join('\u0001');
+  const listChanged = lastRenderedListKey !== null && listKey !== lastRenderedListKey;
+  lastRenderedListKey = listKey;
   renderSidebar();
   renderMain();
   renderTags();
   updateSortBtn();
-  if(main && !skipScrollRestore) requestAnimationFrame(()=>{ main.scrollTop = scrollTop; });
+  if(main && !skipScrollRestore && listChanged){
+    main.scrollTop = 0;
+  } else if(main && !skipScrollRestore){
+    // チャンネル一覧は最初の1ページ分だけ描画されるため、そのままだとスクロールして
+    // 読み込んだ続きの分が消え、位置を戻しても上に引き戻されてしまう
+    // （裏の取得のたびに再描画されるので「下までスクロールしても戻される」状態になっていた）。
+    // 描き直す前と同じページ数まで読み込み直してから位置を戻す。
+    let guard = 0;
+    while(pagesBefore > currentPage && currentPage > 0 && Array.isArray(currentFiltered)
+          && currentPage * pageSize() < currentFiltered.length && document.getElementById('scroll-sentinel') && guard < 200){
+      renderChannelList(currentFiltered, true);
+      guard++;
+    }
+    main.scrollTop = scrollTop;
+    requestAnimationFrame(()=>{ main.scrollTop = scrollTop; });
+  }
   skipScrollRestore = false;
 }
 
