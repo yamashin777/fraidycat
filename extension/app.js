@@ -3558,7 +3558,8 @@ function loadMoreChannels(){
 
 function renderMain(){
   const main = document.getElementById('main');
-  // 列表示はチャンネル一覧（renderChannelList）が必要に応じて付け直す。タイムライン表示等では1列に戻す
+  // 列表示のクラスは、チャンネル一覧（renderChannelList）・動画一覧（下のrenderTimeline）の
+  // 描画時に付け直す。「該当なし」などの表示では1列に戻すため、いったん外しておく
   main.classList.remove('grid-cols-2', 'grid-cols-3');
   updateColButtons();
   let filtered = follows.filter(f=>{
@@ -3626,6 +3627,9 @@ function renderMain(){
     renderChannelList(filtered);
   } else {
     main.innerHTML = renderTimeline(filtered, sortMode);
+    // 新着順・長い順・短い順も列数の設定に合わせて並べる（日付の見出しは横幅いっぱい）
+    main.classList.toggle('grid-cols-2', channelCols === 2);
+    main.classList.toggle('grid-cols-3', channelCols === 3);
   }
 }
 

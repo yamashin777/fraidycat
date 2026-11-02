@@ -279,7 +279,11 @@ body{display:flex;flex-direction:column;min-height:100vh}
 .main.grid-cols-2,.main.grid-cols-3{display:grid;gap:4px 8px;align-content:start;grid-auto-rows:max-content}
 .main.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .main.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-.main.grid-cols-2 .follow-card,.main.grid-cols-3 .follow-card{margin-bottom:0}
+.main.grid-cols-2 .follow-card,.main.grid-cols-3 .follow-card,
+.main.grid-cols-2 .tl-card,.main.grid-cols-3 .tl-card{margin-bottom:0}
+/* 新着順の日付見出しは横幅いっぱいに */
+.main.grid-cols-2 .tl-day-label,.main.grid-cols-3 .tl-day-label,
+.main.grid-cols-2 .empty,.main.grid-cols-3 .empty{grid-column:1/-1}
 /* 開いたカード（設定パネル）と読み込み中表示は横幅いっぱいに */
 .main.grid-cols-2 .follow-card.expanded,.main.grid-cols-3 .follow-card.expanded,
 .main.grid-cols-2 #scroll-sentinel,.main.grid-cols-3 #scroll-sentinel{grid-column:1/-1}
@@ -288,7 +292,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
 @media(max-width:640px){
   /* スマホは常に1列（列数ボタンも並べ替えバーごと非表示） */
   .main.grid-cols-2,.main.grid-cols-3{display:block}
-  .main.grid-cols-2 .follow-card,.main.grid-cols-3 .follow-card{margin-bottom:4px}
+  .main.grid-cols-2 .follow-card,.main.grid-cols-3 .follow-card,
+  .main.grid-cols-2 .tl-card,.main.grid-cols-3 .tl-card{margin-bottom:4px}
 }
 .search-input{
   border:none;background:transparent;outline:none;
