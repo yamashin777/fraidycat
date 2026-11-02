@@ -570,6 +570,9 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   transition:all 0.12s;line-height:1;
 }
 .fc-del:hover{background:var(--danger-light);color:var(--danger)}
+/* 削除ボタンはゴミ箱アイコン（SVG）。文字の大きさに合わせて表示する */
+.fc-del{display:inline-flex;align-items:center;justify-content:center}
+.fc-del svg{width:1em;height:1em;display:block}
 
 /* Detail */
 .fc-detail{
