@@ -282,6 +282,20 @@ const FREQ_PILL = {
 // チャンネル一覧（チャンネル順・登録順など）を何列で表示するか（1〜3）。端末ごとに記憶する。
 // 一覧描画（renderChannelList）から参照されるため、描画より前のここで定義している。
 let channelCols = Math.min(3, Math.max(1, parseInt(localStorage.getItem('fraidycat_channel_cols'), 10) || 1));
+// チャンネルのSNS（X・Instagram・TikTok）リンクの取得（ファイル末尾の「SNSリンク」の処理）で使う設定値。
+// snsOf()は一覧描画から呼ばれるため、関連する定数は描画より前のここで定義している。
+const SNS_GAP_MS = 8000;                           // 概要ページの取得間隔（1ページ約2MBのため控えめに）
+const SNS_RETRY_MS = 30*24*60*60*1000;             // 同じチャンネルの再確認は30日後
+const SNS_ERROR_BACKOFF_MS = 5*60*1000;            // 通信エラー時は5分休む
+const SNS_SAVE_EVERY = 10;                         // この件数ごとにまとめて保存
+let snsTimer = null;
+let snsUnsaved = 0;
+// SNSアイコンの画像（snsIconsHtmlで使用）
+const SNS_ICONS = {
+  x: {label:'X', svg:'<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>'},
+  instagram: {label:'Instagram', svg:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="17.4" cy="6.6" r="1.4" fill="currentColor"/></svg>'},
+  tiktok: {label:'TikTok', svg:'<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 0 1-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3s-1.88.09-3.24-1.48z"/></svg>'},
+};
 // アイコン画像の読み込み失敗時に取り直したチャンネル（refreshIconAfterErrorで使用）
 const iconRetriedIds = new Set();
 // ユーチュラ番号の解決（ファイル末尾の「ユーチュラ」の処理）で使う設定値。
@@ -1931,6 +1945,7 @@ function renderFollowCard(f){
               ${f.initials}
             </div>`}
         ${fmtSubscribers(f.subscriberCount)?`<span class="fc-sub-count">${fmtSubscribers(f.subscriberCount)}</span>`:''}
+        ${snsIconsHtml(f)}
       </div>
       <div class="fc-body">
         <div class="fc-top">
@@ -1979,7 +1994,10 @@ function renderFollowCard(f){
                 ? `<a class="fc-row-avatar" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="${avatarInnerStyle};text-decoration:none">${avatarInnerHtml}</a>`
                 : `<div class="fc-row-avatar" style="${avatarInnerStyle}">${avatarInnerHtml}</div>`}
               ${subStr?`<span class="fc-sub-count">${subStr}</span>`:''}
+              ${f.posts.length < 2 ? snsIconsHtml(f) : ''}
             </div>`
+          : pi===1
+          ? `<div style="width:34px;flex-shrink:0;display:flex;justify-content:center">${snsIconsHtml(f)}</div>`
           : `<div style="width:34px;flex-shrink:0"></div>`;
         const rightButtons = '';
         return `<div class="fc-preview-item">
@@ -4957,6 +4975,8 @@ async function refreshChannelInfo(){
         const iconUrl = item.snippet?.thumbnails?.default?.url;
         if(iconUrl && !f.iconManual) f.iconUrl = iconUrl;
         f.iconCheckedAt = Date.now();
+        // チャンネル説明文に書かれたSNS（X・Instagram・TikTok）のURLも拾う（snsIconsHtml参照）
+        f.snsDesc = extractSnsFromText(item.snippet?.description || '');
         const subCount = item.statistics?.subscriberCount;
         if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
       });
@@ -5096,3 +5116,103 @@ function scheduleYuturaResolve(delay){
 // 起動直後のRSS取得と重ならないよう少し待ってから開始し、新規追加分のために定期的に再開する
 scheduleYuturaResolve(30000);
 setInterval(()=>scheduleYuturaResolve(0), 10*60*1000);
+
+/* ── チャンネルのSNSリンク（X・Instagram・TikTok）──
+   チャンネルアイコンの下にSNSのアイコンを並べ、クリックでそのページを開く。
+   リンクは2か所から集める:
+   1) チャンネルの「概要」ページのリンク欄（channelExternalLinkViewModel）→ follow.snsAbout
+      YouTubeのページを直接読む必要があるため、host_permissionsで直接取得できる
+      Chrome拡張機能版でだけ取得する（1ページ約2MBのため間隔を空けて少しずつ）。
+   2) チャンネルの説明文（YouTube Data APIのsnippet.description）→ follow.snsDesc
+      refreshChannelInfo()でアイコン確認と同時に取得するので、Web版・スマホでも集まる。
+   表示は 2) に 1) を上書きして合わせたもの（概要ページのリンク欄を優先）。
+   どちらもGitHub同期で他端末にも共有される。 */
+function classifySnsUrl(raw){
+  let s = String(raw || '').trim();
+  if(!s) return null;
+  if(!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  let u;
+  try{ u = new URL(s); }catch(e){ return null; }
+  const host = u.hostname.toLowerCase().replace(/^(www|m|mobile)\./, '');
+  const first = u.pathname.split('/').filter(Boolean)[0] || '';
+  if(!first) return null;
+  if(host === 'x.com' || host === 'twitter.com'){
+    if(/^(intent|share|hashtag|search|home|i|messages|settings)$/i.test(first)) return null;
+    return ['x', `https://x.com/${first}`];
+  }
+  if(host === 'instagram.com'){
+    if(/^(p|reel|reels|explore|stories|tv)$/i.test(first)) return null;
+    return ['instagram', `https://www.instagram.com/${first}/`];
+  }
+  if(host === 'tiktok.com'){
+    if(!first.startsWith('@')) return null;
+    return ['tiktok', `https://www.tiktok.com/${first}`];
+  }
+  return null;
+}
+function extractSnsFromText(text){
+  const out = {};
+  const re = /(?:https?:\/\/)?(?:www\.|m\.|mobile\.)?(?:x|twitter|instagram|tiktok)\.com\/[^\s"'<>（）()【】「」、。]+/gi;
+  for(const m of String(text || '').matchAll(re)){
+    const c = classifySnsUrl(m[0]);
+    if(c && !out[c[0]]) out[c[0]] = c[1];
+  }
+  return out;
+}
+function snsOf(f){
+  return {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+}
+// （SNS_ICONSは一覧描画から参照されるため、ファイル先頭側で定義している）
+// チャンネルアイコンの下に並べるSNSアイコン（無ければ空文字）
+function snsIconsHtml(f){
+  const sns = snsOf(f);
+  const keys = ['x', 'instagram', 'tiktok'].filter(k => sns[k]);
+  if(!keys.length) return '';
+  return `<div class="fc-sns">${keys.map(k =>
+    `<a class="fc-sns-link fc-sns-${k}" href="${esc(sns[k])}" target="_blank" rel="noopener" title="${SNS_ICONS[k].label}を開く" aria-label="${SNS_ICONS[k].label}">${SNS_ICONS[k].svg}</a>`
+  ).join('')}</div>`;
+}
+
+// 概要ページのリンク欄を読み取る。成功（見つかった／無かった）なら true、通信エラーなら false
+async function resolveSnsFromAbout(f){
+  const chId = ytChannelIdFromUrl(f.url || '');
+  if(!chId) return true;
+  try{
+    const r = await fetch(`https://www.youtube.com/channel/${encodeURIComponent(chId)}/about`,
+      {signal:AbortSignal.timeout(20000), credentials:'omit', cache:'no-store'});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+    const about = {};
+    const re = /"channelExternalLinkViewModel":\{"title":\{"content":"[^"]*"\},"link":\{"content":"([^"]+)"/g;
+    for(const m of html.matchAll(re)){
+      const c = classifySnsUrl(m[1].replace(/\u0026/g, '&'));
+      if(c && !about[c[0]]) about[c[0]] = c[1];
+    }
+    f.snsAbout = about;
+    f.snsCheckedAt = Date.now();
+    return true;
+  }catch(e){
+    console.warn('SNSリンクの取得に失敗:', f.name, e.message);
+    return false;
+  }
+}
+function scheduleSnsResolve(delay){
+  if(!(typeof isExtensionContext !== 'undefined' && isExtensionContext)) return;
+  if(snsTimer) return;
+  snsTimer = setTimeout(async ()=>{
+    snsTimer = null;
+    const now = Date.now();
+    const f = follows.find(x => ytChannelIdFromUrl(x.url || '')
+      && !(x.snsCheckedAt && now - x.snsCheckedAt < SNS_RETRY_MS));
+    if(!f){
+      if(snsUnsaved){ snsUnsaved = 0; save(true, false); debouncedRender(); }
+      return;
+    }
+    const ok = await resolveSnsFromAbout(f);
+    if(ok && ++snsUnsaved >= SNS_SAVE_EVERY){ snsUnsaved = 0; save(true, false); debouncedRender(); }
+    scheduleSnsResolve(ok ? SNS_GAP_MS : SNS_ERROR_BACKOFF_MS);
+  }, delay);
+}
+// 起動直後のRSS取得・ユーチュラ番号の解決と重ならないよう少し遅らせて開始し、新規追加分のため定期的に再開する
+scheduleSnsResolve(60000);
+setInterval(()=>scheduleSnsResolve(0), 10*60*1000);
