@@ -285,6 +285,9 @@ let channelCols = Math.min(3, Math.max(1, parseInt(localStorage.getItem('fraidyc
 // チャンネルのSNS（X・Instagram・TikTok）リンクの取得（ファイル末尾の「SNSリンク」の処理）で使う設定値。
 // snsOf()は一覧描画から呼ばれるため、関連する定数は描画より前のここで定義している。
 const SNS_GAP_MS = 8000;                           // 概要ページの取得間隔（1ページ約2MBのため控えめに）
+// 調べ方を変えた時に確認済みのチャンネルも調べ直すための版数
+// （2: lit.link・Linktree等のリンクまとめページもたどるようにした）
+const SNS_CHECK_VER = 2;
 const SNS_RETRY_MS = 30*24*60*60*1000;             // 同じチャンネルの再確認は30日後
 const SNS_ERROR_BACKOFF_MS = 5*60*1000;            // 通信エラー時は5分休む
 const SNS_SAVE_EVERY = 10;                         // この件数ごとにまとめて保存
@@ -4978,6 +4981,8 @@ async function refreshChannelInfo(){
         f.iconCheckedAt = Date.now();
         // チャンネル説明文に書かれたSNS（X・Instagram・TikTok）のURLも拾う（snsIconsHtml参照）
         f.snsDesc = extractSnsFromText(item.snippet?.description || '');
+        // lit.link等のリンクまとめページは、拡張機能がたどってSNSを探す（resolveSnsFromAbout）
+        f.snsHubDesc = findSnsHubUrl(item.snippet?.description || '');
         const subCount = item.statistics?.subscriberCount;
         if(subCount != null){ f.subscriberCount = parseInt(subCount); f.subscriberFetchedAt = Date.now(); }
       });
@@ -5160,6 +5165,18 @@ function extractSnsFromText(text){
   }
   return out;
 }
+// lit.link・Linktree等の「リンクまとめページ」のURLを探す（無ければnull）
+function findSnsHubUrl(text){
+  const re = /(?:https?:\/\/)?(?:www\.)?(?:lit\.link|linktr\.ee|potofu\.me|profu\.link|bio\.link|linkbio\.co)\/[^\s"'<>（）()【】「」、。?#]+/i;
+  const m = String(text || '').match(re);
+  if(!m) return null;
+  return (/^https?:\/\//i.test(m[0]) ? m[0] : 'https://' + m[0]).replace(/^http:\/\//i, 'https://');
+}
+// リンクまとめサービス自身の公式アカウント（ページのフッター等に載っていることがあるため除外）
+const SNS_HUB_OWN_ACCOUNTS = new Set([
+  'https://x.com/litlink_jp', 'https://www.instagram.com/litlink_jp/', 'https://www.tiktok.com/@litlink_jp',
+  'https://x.com/linktree_', 'https://www.instagram.com/linktree_/', 'https://www.tiktok.com/@linktree',
+]);
 function snsOf(f){
   return {...(f.snsDesc || {}), ...(f.snsAbout || {})};
 }
@@ -5184,13 +5201,32 @@ async function resolveSnsFromAbout(f){
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const html = await r.text();
     const about = {};
+    let hub = null;
     const re = /"channelExternalLinkViewModel":\{"title":\{"content":"[^"]*"\},"link":\{"content":"([^"]+)"/g;
     for(const m of html.matchAll(re)){
-      const c = classifySnsUrl(m[1].replace(/\u0026/g, '&'));
+      // ページ内のJSONでは & が & という文字列で書かれているので戻す
+      const link = m[1].replace(/\\u0026/g, '&');
+      const c = classifySnsUrl(link);
       if(c && !about[c[0]]) about[c[0]] = c[1];
+      if(!hub) hub = findSnsHubUrl(link);
+    }
+    // リンク欄（または説明文）にlit.link等のリンクまとめページがあれば、そこからも探して
+    // 足りないSNSを補う（例: Moe /月一海外旅行 → lit.link/realmoepyon にInstagram・TikTok）
+    hub = hub || f.snsHubDesc || null;
+    const missing = ['x', 'instagram', 'tiktok'].filter(k => !about[k] && !(f.snsDesc || {})[k]);
+    if(hub && missing.length){
+      try{
+        await new Promise(res => setTimeout(res, 1500));
+        const hr = await fetch(hub, {signal:AbortSignal.timeout(15000), credentials:'omit', cache:'no-store'});
+        if(hr.ok){
+          const found = extractSnsFromText(await hr.text());
+          for(const k of missing) if(found[k] && !SNS_HUB_OWN_ACCOUNTS.has(found[k])) about[k] = found[k];
+        }
+      }catch(e){ console.warn('リンクまとめページの取得に失敗:', f.name, hub, e.message); }
     }
     f.snsAbout = about;
     f.snsCheckedAt = Date.now();
+    f.snsCheckVer = SNS_CHECK_VER;
     return true;
   }catch(e){
     console.warn('SNSリンクの取得に失敗:', f.name, e.message);
@@ -5204,7 +5240,7 @@ function scheduleSnsResolve(delay){
     snsTimer = null;
     const now = Date.now();
     const f = follows.find(x => ytChannelIdFromUrl(x.url || '')
-      && !(x.snsCheckedAt && now - x.snsCheckedAt < SNS_RETRY_MS));
+      && !(x.snsCheckedAt && x.snsCheckVer === SNS_CHECK_VER && now - x.snsCheckedAt < SNS_RETRY_MS));
     if(!f){
       if(snsUnsaved){ snsUnsaved = 0; save(true, false); debouncedRender(); }
       return;
