@@ -701,7 +701,9 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .fc-memo-inline{
   font-size:11px;color:var(--text-muted);font-style:italic;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  flex:1;min-width:0;
+  /* 文字の長さぶんだけの幅にする（以前はflex:1で行の空きいっぱいに広がり、メモの右側の
+     空白もメモ扱いになってクリックしてもパネルが開かなかった）。空きは右端のfc-top-spacerが受け持つ */
+  flex:0 1 auto;min-width:0;
 }
 /* 動画プレビューリスト */
 .fc-preview{
