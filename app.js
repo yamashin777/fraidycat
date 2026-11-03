@@ -297,6 +297,10 @@ let snsUnsaved = 0;
 // これより後に消えたものが見つかると、また表示する。一覧描画から参照されるため、ここで定義している。
 let snsRemovedNoticeClosedAt = 0;
 try{ snsRemovedNoticeClosedAt = Number(localStorage.getItem('fraidycat_sns_removed_notice_closed')) || 0; }catch(e){}
+// 上部メニューの「🔔 通知」を最後に開いた日時。これより後の通知を未読として件数を出す（updateNotifBadge）
+let notifSeenAt = 0;
+try{ notifSeenAt = Number(localStorage.getItem('fraidycat_notif_seen')) || 0; }catch(e){}
+let notifListSeenAt = 0; // 通知の一覧を開いた時点のnotifSeenAt（一覧を見ている間は「未読」の印を残すため）
 // SNSアイコンの画像（snsIconsHtmlで使用）
 // YouTubeのチャンネル概要と同じ、丸いブランドカラーのアイコン
 let snsSvgSeq = 0; // SNSアイコンのグラデーションidの連番（snsIconsHtmlで使用）
@@ -1850,6 +1854,7 @@ function openFollowPanel(id){
   closeLogModal();
   const rvHistModal = document.getElementById('revivalHistModal');
   if(rvHistModal) rvHistModal.style.display = 'none';
+  closeNotifications();
   // タイムライン系の表示（新着順・長い順・短い順）ではチャンネルごとの展開パネルが
   // そもそも存在しないため、先に「チャンネル順」表示へ切り替える。
   if(!['freq','registered-desc','registered-asc','subscribers-desc','fetched-desc','fetched-asc'].includes(sortMode)){
@@ -5428,8 +5433,8 @@ function keepRemovedSns(id, key){
   if(!e) return;
   markLocalEdit();
   f.snsManual = {...(f.snsManual || {}), [key]: e.url};
-  delete f.snsRemoved[key];
-  if(!Object.keys(f.snsRemoved).length) delete f.snsRemoved;
+  // 「🔔 通知」の対応済みの一覧に出すため、選んだ内容を記録して残す
+  f.snsRemoved = {...f.snsRemoved, [key]: {...e, done: true, kept: true, doneAt: Date.now()}};
   save();
   render();
   showToast(`${SNS_ICONS[key].label}のリンクを残しました（手動の設定になります）`, 2500);
@@ -5440,14 +5445,111 @@ function dropRemovedSns(id, key){
   const e = f && snsRemovedOf(f, key);
   if(!e) return;
   markLocalEdit();
-  f.snsRemoved = {...f.snsRemoved, [key]: {...e, done: true}};
+  f.snsRemoved = {...f.snsRemoved, [key]: {...e, done: true, doneAt: Date.now()}};
   save();
   render();
   showToast(`${SNS_ICONS[key].label}のリンクを消しました`, 2500);
 }
-function snsRemovedDate(e){
-  const d = new Date(e.at);
+function snsRemovedDate(e, field){
+  const d = new Date(e[field || 'at']);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/* ── 通知（上部メニューの「🔔 通知」） ──
+   画面右下の通知カードは×で閉じると見えなくなるため、その内容（今はYouTubeから消えた
+   SNSリンク）をあとから確認できる一覧。開くと未読の件数（バッジ）が消える。
+   「久しぶり」の通知カードの内容は、これまで通り「🎉 久しぶり」の履歴で確認する。 */
+function notifItems(){
+  const items = [];
+  for(const f of follows){
+    for(const k of ['x', 'instagram', 'tiktok']){
+      const e = (f.snsRemoved || {})[k];
+      if(!e) continue;
+      const open = !!snsRemovedOf(f, k);
+      // 未対応のまま手動で設定し直した等、印が意味を持たなくなったものは出さない
+      if(!open && !e.done) continue;
+      items.push({f, k, e, open});
+    }
+  }
+  return items.sort((a, b) => (b.e.at || 0) - (a.e.at || 0));
+}
+function updateNotifBadge(){
+  const n = notifItems().filter(it => it.open && (it.e.at || 0) > notifSeenAt).length;
+  for(const id of ['notifBadge', 'notifBadgeMobile']){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    el.textContent = n > 99 ? '99+' : String(n);
+    el.style.display = n > 0 ? 'inline-flex' : 'none';
+  }
+  const m = document.getElementById('notifModal');
+  if(m && m.style.display !== 'none') renderNotifList();
+}
+function openNotifications(){
+  let m = document.getElementById('notifModal');
+  if(!m){
+    m = document.createElement('div');
+    m.id = 'notifModal';
+    m.className = 'modal-backdrop';
+    // 背景クリックだけで閉じる（中身にstopPropagationを付けるとボタンが反応しなくなるため付けない）
+    m.onclick = (e)=>{ if(e.target === m) closeNotifications(); };
+    m.innerHTML = `<div class="modal" style="max-width:640px;width:92%;max-height:84vh;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h2 style="margin:0">🔔 通知</h2>
+        <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="closeNotifications">閉じる</button>
+      </div>
+      <div id="notifBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  m.style.display = 'flex';
+  // 未読の印を付けて表示してから既読にする（一覧の「未読」は閉じるまで残る）
+  notifListSeenAt = notifSeenAt;
+  renderNotifList();
+  notifSeenAt = snsRemovedNoticeClosedAt = Date.now();
+  try{
+    localStorage.setItem('fraidycat_notif_seen', String(notifSeenAt));
+    localStorage.setItem('fraidycat_sns_removed_notice_closed', String(snsRemovedNoticeClosedAt));
+  }catch(e){}
+  renderSnsRemovedNotice();
+}
+function openNotificationsMobile(){ openNotifications(); closeDrawer(); }
+function closeNotifications(){
+  const m = document.getElementById('notifModal');
+  if(m) m.style.display = 'none';
+}
+function openFollowFromNotif(id){
+  closeNotifications();
+  openFollowPanel(id);
+}
+function renderNotifList(){
+  const body = document.getElementById('notifBody');
+  if(!body) return;
+  const items = notifItems();
+  if(!items.length){
+    body.innerHTML = `<div class="notif-empty">通知はありません</div>`;
+    return;
+  }
+  const row = it => {
+    const label = SNS_ICONS[it.k].label;
+    const unread = it.open && (it.e.at || 0) > notifListSeenAt;
+    return `<div class="notif-item${it.open ? '' : ' notif-done'}">
+      <span class="notif-date">${snsRemovedDate(it.e)}</span>
+      <div class="notif-text">
+        <div><span class="notif-kind">SNSリンクの削除を検知</span>${unread ? '<span class="notif-new">未読</span>' : ''}</div>
+        <div><span class="rv-name" data-click="1" data-action="openFollowFromNotif" data-args="[${it.f.id}]" title="このチャンネルの設定パネルを開く">${esc(it.f.name)}</span> の${label}のリンクが、YouTubeのチャンネルから無くなっていました</div>
+        <a class="notif-url" href="${esc(it.e.url)}" target="_blank" rel="noopener">${esc(it.e.url)}</a>
+      </div>
+      <div class="notif-actions">${it.open
+        ? `<button class="fc-copy-btn" data-click="1" data-action="keepRemovedSns" data-args="${dargs([it.f.id, it.k])}" title="このリンクを手動の設定として残し、アイコンも今まで通り表示する">残す</button>
+           <button class="fc-copy-btn" data-click="1" data-action="dropRemovedSns" data-args="${dargs([it.f.id, it.k])}" title="このリンクとアイコンの表示をやめる">消す</button>`
+        : `<span class="fc-sns-state">${it.e.kept ? '残した' : '消した'}${it.e.doneAt ? `（${snsRemovedDate(it.e, 'doneAt')}）` : ''}</span>`}
+      </div>
+    </div>`;
+  };
+  const open = items.filter(it => it.open), done = items.filter(it => !it.open);
+  body.innerHTML =
+    (open.length ? `<div class="notif-sec">未対応（${open.length}件）</div>${open.map(row).join('')}` : '') +
+    (done.length ? `<div class="notif-sec">対応済み（${done.length}件）</div>${done.map(row).join('')}` : '');
 }
 // YouTubeから消えたSNSリンクの通知カード（画面右下）。「久しぶり」の通知カードと同じく
 // 背景を覆わないので、表示中も一覧を操作できる。×で閉じると、次に新しく消えたものが
@@ -5458,6 +5560,7 @@ function closeSnsRemovedNotice(){
   renderSnsRemovedNotice();
 }
 function renderSnsRemovedNotice(){
+  updateNotifBadge();
   const items = [];
   for(const f of follows){
     const keys = ['x', 'instagram', 'tiktok'].filter(k => snsRemovedOf(f, k));
@@ -5496,7 +5599,8 @@ function renderSnsRemovedNotice(){
     </div>
     <div class="rv-notice-foot">
       ${rest > 0 ? `<span class="rv-notice-more">ほか${rest}件</span>` : ''}
-      <span class="rv-notice-more" style="margin-left:auto">名前を押すと設定パネルで「残す」「消す」を選べます</span>
+      <span class="rv-notice-more">名前を押すと設定パネルで「残す」「消す」を選べます</span>
+      <button class="rv-notice-open" data-click="1" data-action="openNotifications">通知を見る</button>
     </div>`;
   // 「久しぶり」の通知カードが出ていれば、その上に重ねずに並べる
   const rv = document.getElementById('revivalNotice');

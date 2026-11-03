@@ -1087,6 +1087,20 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
   padding:7px 10px;font-size:12px;line-height:1.5;
 }
 .sns-rm-notice .rv-title{white-space:normal}
+.sns-rm-notice .rv-notice-foot{flex-wrap:wrap}
+/* 上部メニューの「🔔 通知」の一覧（openNotifications） */
+.notif-empty{padding:28px 0;text-align:center;color:var(--text-faint);font-size:13px}
+.notif-sec{font-size:12px;font-weight:700;color:var(--text-muted);padding:10px 2px 4px}
+.notif-item{display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text);line-height:1.55}
+.notif-item.notif-done{opacity:.65}
+.notif-date{flex-shrink:0;width:38px;color:var(--text-faint);font-family:var(--font-num);font-size:12px;padding-top:1px}
+.notif-text{flex:1;min-width:0}
+.notif-text .rv-name{font-weight:700;cursor:pointer;text-decoration:underline dotted}
+.notif-text .rv-name:hover{color:var(--accent)}
+.notif-kind{font-size:11px;font-weight:700;color:var(--danger);background:var(--danger-light);border-radius:99px;padding:1px 8px}
+.notif-new{margin-left:6px;font-size:11px;font-weight:700;color:#fff;background:var(--danger);border-radius:99px;padding:1px 7px}
+.notif-url{display:block;font-size:11px;color:var(--text-muted);text-decoration:line-through;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.notif-actions{flex-shrink:0;display:flex;gap:4px;align-items:center;padding-top:1px}
 /* メモ内のリンク（[文字](URL) やURLから作るリンク） */
 .memo-link{color:var(--accent);text-decoration:underline;text-underline-offset:2px;font-style:normal}
 .memo-link:hover{color:var(--accent-mid)}
