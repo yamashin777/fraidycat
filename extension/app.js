@@ -2071,8 +2071,10 @@ function renderFollowCard(f){
       </div>
     </div>
     ${(f.posts||[]).length > 0 ? `
-    <div class="fc-preview" style="padding:0 8px 2px">
-      ${(f.posts||[]).slice(0,3).map((p, pi)=>{
+    <!-- 開いている時は、下の詳細パネルに同じ動画の一覧が出るので、ここの動画タイトルは出さず
+         アイコン・登録者数・SNSだけ残す（スマホではアイコンが上の行にあるので、この行ごと出さない） -->
+    <div class="fc-preview${isExp ? ' fc-preview-exp' : ''}" style="padding:0 8px 2px">
+      ${(f.posts||[]).slice(0, isExp ? 1 : 3).map((p, pi)=>{
         const dur = fmtDuration(p.duration);
         const isShort = p.link && p.link.includes('/shorts/');
         const liveBadge = getLiveBadge(p);
@@ -2098,12 +2100,13 @@ function renderFollowCard(f){
                 ? `<a class="fc-row-avatar" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="${avatarInnerStyle};text-decoration:none">${avatarInnerHtml}</a>`
                 : `<div class="fc-row-avatar" style="${avatarInnerStyle}">${avatarInnerHtml}</div>`}
               ${subStr?`<span class="fc-sub-count">${subStr}</span>`:''}
-              ${f.posts.length < 2 ? snsIconsHtml(f) : ''}
+              ${(f.posts.length < 2 || isExp) ? snsIconsHtml(f) : ''}
             </div>`
           : pi===1
           ? `<div style="width:34px;flex-shrink:0;display:flex;justify-content:center">${snsIconsHtml(f)}</div>`
           : `<div style="width:34px;flex-shrink:0"></div>`;
         const rightButtons = '';
+        if(isExp) return `<div class="fc-preview-item"><div class="fc-avatar-col">${leftAvatar}</div></div>`;
         return `<div class="fc-preview-item">
           <div class="fc-avatar-col">${leftAvatar}</div>
           <div class="fc-preview-meta">
