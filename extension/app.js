@@ -4324,19 +4324,23 @@ async function resolveYouTubeFeed(input){
   // YouTube以外はそのまま（一般RSS）
   if(!/youtube\.com|youtu\.be/.test(url)) return url;
 
-  // @ハンドル・/c/・/user/ 形式 → APIで検索してID取得（APIキーがあれば）
+  // @ハンドル形式 → APIでハンドルからチャンネルIDを取得（APIキーがあれば）
   // ハンドル名には日本語等の非ASCII文字がURLエンコードされて含まれることがある
   // （例: @もふもふ裏話 → @%E3%82%82...）ため、英数字に限定せず「/」「?」「空白」
   // 以外の文字を幅広く受け入れ、末尾に付くタブ（/shorts, /videos等）は除外する。
+  // 以前は検索API（search?q=@ハンドル）の1件目を使っていたが、検索はあいまい一致のため
+  // 別のチャンネルを返すことがあった（例: @youtube-oji「無職おじさんチャンネル」が
+  // 「オジチャンネル OJI CHANNEL」になり、既に登録済みと誤って表示された）。
+  // そのため、ハンドルと完全に一致するチャンネルだけを返す forHandle を使う。
   const handleMatch = url.match(/youtube\.com\/@([^\/\?\s]+)/);
   if(handleMatch && ytApiKey){
     try{
       let q = handleMatch[1];
       try{ q = decodeURIComponent(q); }catch(e){ /* デコード失敗時はそのまま使う */ }
-      const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent('@'+q)}&maxResults=1&key=${ytApiKey}`);
+      const r = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent('@'+q)}&key=${ytApiKey}`);
       if(r.ok){
         const d = await r.json();
-        const cid = d.items?.[0]?.snippet?.channelId || d.items?.[0]?.id?.channelId;
+        const cid = d.items?.[0]?.id;
         if(cid) return `https://www.youtube.com/feeds/videos.xml?channel_id=${cid}`;
       }
     }catch(e){ /* 次の手段へ */ }
@@ -4360,7 +4364,10 @@ async function resolveYouTubeFeed(input){
     if(rssLinkMatch) return rssLinkMatch[1].replace(/&amp;/g, '&');
     // HTML内から channelId を探す。プロキシによってはYouTubeが簡易版HTMLを返し
     // 通常のytInitialData等が含まれないことがあるため、複数のパターンを順に試す。
-    let cm = html.match(/"(?:channelId|externalId)":"(UC[A-Za-z0-9_-]+)"/);
+    // externalId（そのページのチャンネル自身のID）を先に探す。channelIdはおすすめ欄等の
+    // 別チャンネルのものが先に出てくることがあるため後回しにする
+    let cm = html.match(/"externalId":"(UC[A-Za-z0-9_-]+)"/);
+    if(!cm) cm = html.match(/"channelId":"(UC[A-Za-z0-9_-]+)"/);
     if(!cm) cm = html.match(/itemprop="channelId"\s+content="(UC[A-Za-z0-9_-]+)"/);
     if(!cm) cm = html.match(/"browseId":"(UC[A-Za-z0-9_-]+)"/);
     if(!cm) cm = html.match(/rel="canonical"\s+href="https:\/\/www\.youtube\.com\/channel\/(UC[A-Za-z0-9_-]+)"/);
