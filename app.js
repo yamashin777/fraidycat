@@ -2659,9 +2659,13 @@ function checkFetchSchedules(){
 function fmtSubscribers(n){
   if(n == null || isNaN(n)) return '';
   if(n < 10000) return n.toLocaleString('ja-JP') + '人'; // 1万未満は実数
+  // YouTubeのチャンネルページと同じく有効数字3桁で、四捨五入せず切り捨てて表示する
+  // （以前は10万人以上を整数に四捨五入していたため、49.5万人が「50万人」と表示されていた）
   const man = n / 10000;
-  if(man < 10) return man.toFixed(1).replace(/\.0$/,'') + '万人'; // 1.2万人
-  return Math.round(man) + '万人'; // 345万人
+  const cut = (v, d) => (Math.floor(v * 10 ** d + 1e-9) / 10 ** d).toFixed(d).replace(/\.?0+$/, '');
+  if(man < 10) return cut(man, 2) + '万人';  // 1.23万人
+  if(man < 100) return cut(man, 1) + '万人'; // 49.5万人
+  return Math.floor(man) + '万人';           // 345万人
 }
 
 function renderDetail(f){
