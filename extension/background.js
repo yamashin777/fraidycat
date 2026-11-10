@@ -106,6 +106,7 @@ const BG_FETCH_LOG_MAX = 200;
 const BG_FREQ_INTERVAL = {
   '5分': 5 * 60 * 1000, '15分': 15 * 60 * 1000, '30分': 30 * 60 * 1000,
   '1時間': 60 * 60 * 1000, '6時間': 6 * 60 * 60 * 1000,
+  '1日': 24 * 60 * 60 * 1000,
 };
 function bgJitterRatio(id) {
   let h = 0;
