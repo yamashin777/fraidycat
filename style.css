@@ -172,6 +172,18 @@ body{display:flex;flex-direction:column;min-height:100vh}
   -webkit-tap-highlight-color:transparent;
 }
 .sb-btn:hover{background:var(--tag-bg);color:var(--text)}
+/* 左バー下の「表示の設定」 */
+.sb-opt{display:flex;align-items:center;gap:8px;padding:5px 1.25rem;font-size:13px;color:var(--text-muted);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sb-opt:hover{color:var(--text)}
+.sb-opt input{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+.sb-opt-note{font-size:11px;color:var(--text-faint);padding:0 1.25rem 4px 2.85rem;line-height:1.5}
+#drawerViewOpts .sb-section{padding:0 12px}
+#drawerViewOpts .sb-opt{padding:8px 12px}
+#drawerViewOpts .sb-opt-note{padding:0 12px 4px 35px}
+/* タグの色分けが有効な間のマーク（使えないのでグレーにして押せなくする） */
+.sb-disabled{opacity:.4;filter:grayscale(1);pointer-events:none}
+.fc-fav-btn.fc-fav-off{color:var(--border-strong);cursor:not-allowed}
+.sb-tag-color{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 .sb-btn.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent-light);font-weight:700}
 .sb-btn.active .sb-count{color:var(--accent-mid)}
 .sb-dot{
@@ -1090,6 +1102,8 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 .sns-rm-notice .rv-title{white-space:normal}
 .sns-rm-notice .rv-notice-foot{flex-wrap:wrap}
 /* 上部メニューの「🔔 通知」の一覧（openNotifications） */
+.notif-desc{font-size:12px;color:var(--text-muted);line-height:1.7;background:var(--bg);border-radius:var(--radius);padding:8px 12px;margin-bottom:10px}
+.notif-desc b{color:var(--danger)}
 .notif-empty{padding:28px 0;text-align:center;color:var(--text-faint);font-size:13px}
 .notif-sec{font-size:12px;font-weight:700;color:var(--text-muted);padding:10px 2px 4px}
 .notif-item{display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text);line-height:1.55}

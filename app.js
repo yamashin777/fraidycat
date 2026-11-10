@@ -282,6 +282,22 @@ const FREQ_PILL = {
 // チャンネル一覧（チャンネル順・登録順など）を何列で表示するか（1〜3）。端末ごとに記憶する。
 // 一覧描画（renderChannelList）から参照されるため、描画より前のここで定義している。
 let channelCols = Math.min(3, Math.max(1, parseInt(localStorage.getItem('fraidycat_channel_cols'), 10) || 1));
+// 左バー下の表示の設定（端末ごとに記憶）。一覧描画から参照されるため、ここで定義している。
+//  hideShorts: ショート動画を一覧・タイムラインに出さない
+//  tagColorMode: チャンネルを最初のタグの色で色分けする（その間マークの色は使わない）
+let hideShorts = false, tagColorMode = false;
+try{
+  hideShorts = localStorage.getItem('fraidycat_hide_shorts') === '1';
+  tagColorMode = localStorage.getItem('fraidycat_tag_color') === '1';
+}catch(e){}
+// タグの色分けで使う色（タグの並び順に割り当て、13個目からは繰り返す）
+const TAG_COLORS = [
+  {bg:'#E8F1FB', border:'#4A7FC1'}, {bg:'#FDEBDD', border:'#E07B39'}, {bg:'#E6F4E4', border:'#4C9A45'},
+  {bg:'#F6E6F4', border:'#B05AA5'}, {bg:'#FFF6D6', border:'#C9A21A'}, {bg:'#E2F4F4', border:'#2E9A9A'},
+  {bg:'#FBE4E6', border:'#D0505E'}, {bg:'#ECE8F7', border:'#7461B5'}, {bg:'#F1EDE4', border:'#9A7B4F'},
+  {bg:'#E5EEF0', border:'#5C7F8A'}, {bg:'#EEF6DC', border:'#7FA02C'}, {bg:'#FDE8F1', border:'#D25C93'},
+];
+let tagColorCache = {key:'', map:null};
 // チャンネルのSNS（X・Instagram・TikTok）リンクの取得（ファイル末尾の「SNSリンク」の処理）で使う設定値。
 // snsOf()は一覧描画から呼ばれるため、関連する定数は描画より前のここで定義している。
 const SNS_GAP_MS = 8000;                           // 概要ページの取得間隔（1ページ約2MBのため控えめに）
@@ -1922,6 +1938,7 @@ function renderFollowCard(f){
   const bg = isDark() ? c.dark_bg : c.bg;
   const fg = isDark() ? c.dark_fg : c.fg;
   const latestPost = f.posts?.[0];
+  const vPosts = visiblePosts(f); // 「ショート動画を除く」が有効ならショートを除いた投稿
   const snippet = latestPost ? latestPost.title : (f.error ? '⚠ エラー' : '記事なし');
   const pillClass = FREQ_PILL[f.freq] || '';
   const agoText = f.lastFetched ? relativeTime(new Date(f.lastFetched)) : '未取得';
@@ -2014,8 +2031,11 @@ function renderFollowCard(f){
       }).join('');
     })()}`;
 
-  const markColor = f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
-  const markBg = markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
+  // タグの色分けが有効な時は、マークの色の代わりに最初のタグの色で塗る
+  const tagCol = tagColorMode ? tagColorOf(f) : null;
+  const markColor = !tagColorMode && f.markColor && MARK_COLORS[f.markColor] ? MARK_COLORS[f.markColor] : null;
+  const markBg = tagCol ? tagCol.bg : markColor ? (isDark() ? markColor.darkBg : markColor.bg) : '';
+  const effMark = markColor ? f.markColor : ''; // アイコン枠・★の色（タグの色分け中は付けない）
   // マーク色が付いていないカードは、YouTube以外（RSS/ブログ・Podcast等）を
   // 背景色でひと目で区別できるようにする（マーク色が優先される）。
   // f.platformはURL編集時に追従しないことがあり古くなりうるため、
@@ -2035,16 +2055,16 @@ function renderFollowCard(f){
   const chUrlTitle = chId ? 'YouTubeチャンネルを開く' : 'YouTubeプレイリストを開く';
   return `
   <div class="follow-card${isExp?' expanded':''}${f.suspended?' suspended':''}${nonYoutubeClass}" id="fc-${f.id}"
-    style="${markBg?`background:${markBg};`:''}cursor:pointer">
+    style="${markBg?`background:${markBg};`:''}${tagCol?`box-shadow:inset 4px 0 0 ${tagCol.border};`:''}cursor:pointer">
     <div class="fc-row">
       <!-- PCではfc-previewにアイコンを表示、スマホではここに表示 -->
       <div class="fc-avatar-mobile-wrap" style="display:none;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
         ${chUrl
-          ? `<a class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="background:${bg};color:${fg};text-decoration:none">
+          ? `<a class="fc-avatar-mobile fc-avatar" data-mark="${effMark}" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="background:${bg};color:${fg};text-decoration:none">
               ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" alt="${esc(f.initials)}" data-error-action="hideSelf">` : ''}
               ${f.initials}
             </a>`
-          : `<div class="fc-avatar-mobile fc-avatar" data-mark="${f.markColor||''}" style="background:${bg};color:${fg}">
+          : `<div class="fc-avatar-mobile fc-avatar" data-mark="${effMark}" style="background:${bg};color:${fg}">
               ${f.iconUrl ? `<img src="${esc(iconSrc(f))}" alt="${esc(f.initials)}" data-error-action="hideSelf">` : ''}
               ${f.initials}
             </div>`}
@@ -2055,14 +2075,16 @@ function renderFollowCard(f){
         <div class="fc-top">
           <span class="fc-name">${esc(f.name)}</span>
           ${f.suspended ? `<span class="fc-tag" style="background:#E8E8E8;color:#888;border:1px solid #ccc">更新外</span>` : ''}
-          ${f.tags.map(t=>`<span class="fc-tag" data-click="1" data-action="setTag" data-args="${dargs([t])}" title="このタグで絞り込む" style="cursor:pointer">${esc(t)}</span>`).join('')}
+          ${f.tags.map((t, ti)=>`<span class="fc-tag" data-click="1" data-action="setTag" data-args="${dargs([t])}" title="このタグで絞り込む" style="cursor:pointer${tagCol && ti===0 ? `;background:${tagCol.border};color:#fff` : ''}">${esc(t)}</span>`).join('')}
           ${chId ? `<a class="fc-yutura-link" href="${esc(yuturaUrl(f))}" target="_blank" rel="noopener" data-click="1" data-action="openYutura" data-args="${dargs([f.id, '@evt'])}" title="ユーチュラでこのチャンネルの情報を見る" aria-label="ユーチュラ"></a>` : ''}
           ${f.memo ? `<span class="fc-memo-inline">📝 <span>${linkifyMemo(f.memo, f)}</span></span>` : ''}
           ${f.loading ? '<div class="fc-spinner"></div>' : ''}
           ${f.suspended ? '' : `<span class="freq-pill ${pillClass}">${freqLabel(f.freq)}</span>`}
           ${f.fetchTimes && f.fetchTimes.length>0 ? `<span class="sched-pill" title="個別指定: ${esc(f.fetchTimes)}">個別指定</span>` : ''}
           <span class="fc-ago" title="最終確認時刻">${f.lastFetched ? agoText+'取得' : agoText}</span>
-          <button class="fc-fav-btn" data-mark="${f.markColor||''}" data-click="1" data-action="openMarkPopup" data-args="${dargs([f.id, '@el'])}" title="マーク色を設定">${f.markColor?'★':'☆'}</button>
+          ${tagColorMode
+            ? `<button class="fc-fav-btn fc-fav-off" disabled title="タグの色分けが有効なため、マークは使えません（左バー下で切り替え）">☆</button>`
+            : `<button class="fc-fav-btn" data-mark="${f.markColor||''}" data-click="1" data-action="openMarkPopup" data-args="${dargs([f.id, '@el'])}" title="マーク色を設定">${f.markColor?'★':'☆'}</button>`}
           <button class="fc-cal-btn" data-click="1" data-action="toggleRegDateInput" data-args="[${f.id}]" title="登録日">📅</button>
           ${regDateText ? `<span class="fc-regdate-inline" title="登録日">${regDateText}登録</span>` : ''}
           <button class="fc-del" data-click="1" data-action="delFollow" data-args="[${f.id}]" title="このチャンネルを削除" aria-label="削除"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg></button>
@@ -2070,11 +2092,11 @@ function renderFollowCard(f){
         </div>
       </div>
     </div>
-    ${(f.posts||[]).length > 0 ? `
+    ${vPosts.length > 0 ? `
     <!-- 開いている時は、下の詳細パネルに同じ動画の一覧が出るので、ここの動画タイトルは出さず
          アイコン・登録者数・SNSだけ残す（スマホではアイコンが上の行にあるので、この行ごと出さない） -->
     <div class="fc-preview${isExp ? ' fc-preview-exp' : ''}" style="padding:0 8px 2px">
-      ${(f.posts||[]).slice(0, isExp ? 1 : 3).map((p, pi)=>{
+      ${vPosts.slice(0, isExp ? 1 : 3).map((p, pi)=>{
         const dur = fmtDuration(p.duration);
         const isShort = p.link && p.link.includes('/shorts/');
         const liveBadge = getLiveBadge(p);
@@ -2092,7 +2114,7 @@ function renderFollowCard(f){
             </a>` : '';
         // 1件目の左にアイコン、右に頻度・ボタン（PCのみ）
         const subStr = fmtSubscribers(f.subscriberCount);
-        const avatarInnerStyle = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:var(--font-num);overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
+        const avatarInnerStyle = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:var(--font-num);overflow:hidden;position:relative;border:2px solid transparent;${markColor?`border-color:${markColor.border};`:''}`;
         const avatarInnerHtml = `${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}${esc(f.initials)}`;
         const leftAvatar = pi===0
           ? `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
@@ -2100,7 +2122,7 @@ function renderFollowCard(f){
                 ? `<a class="fc-row-avatar" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="${avatarInnerStyle};text-decoration:none">${avatarInnerHtml}</a>`
                 : `<div class="fc-row-avatar" style="${avatarInnerStyle}">${avatarInnerHtml}</div>`}
               ${subStr?`<span class="fc-sub-count">${subStr}</span>`:''}
-              ${(f.posts.length < 2 || isExp) ? snsIconsHtml(f) : ''}
+              ${(vPosts.length < 2 || isExp) ? snsIconsHtml(f) : ''}
             </div>`
           : pi===1
           ? `<div style="width:34px;flex-shrink:0;display:flex;justify-content:center">${snsIconsHtml(f)}</div>`
@@ -2126,7 +2148,7 @@ function renderFollowCard(f){
         <div class="fc-avatar-col">
           <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0">
             ${(() => {
-              const style = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:var(--font-num);overflow:hidden;position:relative;border:2px solid transparent;${f.markColor&&MARK_COLORS[f.markColor]?`border-color:${MARK_COLORS[f.markColor].border};`:''}`;
+              const style = `background:${bg};color:${fg};width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:500;font-family:var(--font-num);overflow:hidden;position:relative;border:2px solid transparent;${markColor?`border-color:${markColor.border};`:''}`;
               const inner = `${f.iconUrl?`<img src="${esc(iconSrc(f))}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:5px;position:absolute;inset:0">`:''}${esc(f.initials)}`;
               return chUrl
                 ? `<a class="fc-row-avatar" href="${esc(chUrl)}" target="_blank" rel="noopener" title="${chUrlTitle}" style="${style};text-decoration:none">${inner}</a>`
@@ -2135,7 +2157,7 @@ function renderFollowCard(f){
           </div>
         </div>
         <div class="fc-preview-empty" style="padding:8px 0;color:var(--text-faint);font-size:12px">
-          ${f.loading ? '取得中…' : f.error ? '取得エラーです（タップして詳細を確認）' : 'まだ投稿を取得していません（次回の取得をお待ちください）'}
+          ${f.loading ? '取得中…' : f.error ? '取得エラーです（タップして詳細を確認）' : (f.posts||[]).length ? 'ショート動画だけのため表示していません（左バー下の「ショート動画を除く」で切り替え）' : 'まだ投稿を取得していません（次回の取得をお待ちください）'}
         </div>
       </div>
     </div>`}
@@ -2155,6 +2177,7 @@ function renderFollowCard(f){
 }
 
 function openMarkPopup(id, btn){
+  if(tagColorMode){ showToast('タグの色分けが有効なため、マークは使えません', 2500); return; }
   // 既存のポップアップを閉じる
   document.querySelectorAll('.mark-popup').forEach(el=>el.remove());
 
@@ -2712,8 +2735,10 @@ function renderDetail(f){
   if(f.loading) return scheduleUI + '<div class="dp-empty">読み込み中...</div>';
   if(f.error) return scheduleUI + `<div class="dp-err">${esc(f.error)}</div><button class="dp-refresh" data-click="1" data-action="retryFetchById" data-args="[${f.id}]">再試行</button>`;
   if(!f.posts || f.posts.length===0) return scheduleUI + '<div class="dp-empty">記事が見つかりませんでした</div>';
+  const vPosts = visiblePosts(f);
+  if(!vPosts.length) return scheduleUI + '<div class="dp-empty">ショート動画だけのため表示していません（左バー下の「ショート動画を除く」で切り替え）</div>';
   return scheduleUI + `<ul class="detail-posts">
-    ${f.posts.map(p=>{
+    ${vPosts.map(p=>{
       const dur = fmtDuration(p.duration);
       const dateStr = fmtDatetime(p.date);
       const isShort = p.link && p.link.includes('/shorts/');
@@ -3243,7 +3268,7 @@ function openDrawer(){
       html += `<div style="height:0;border-top:1px dashed var(--border-strong);margin:4px 12px;opacity:.6"></div>`;
       html += makeBtn(`個別指定（${scheduledCount}）`, '🕗', activeTag==='__scheduled__', undefined, '__scheduled__');
     }
-    if(favoriteCount > 0){
+    if(favoriteCount > 0 && !tagColorMode){ // タグの色分け中はマークを使わないので出さない
       html += makeBtn(`マーク済み（${favoriteCount}）`, '★', activeTag==='__favorite__', undefined, '__favorite__');
       // 色ごとの内訳を横並びの小さなスウォッチで表示（省スペース）。
       // タップでその色のチャンネルだけに絞り込める
@@ -3271,6 +3296,8 @@ function openDrawer(){
     html += makeBtn('取得 古い順', '⏳', sortMode==='fetched-asc', undefined, undefined, 'fetched-asc');
 
     freqDiv.innerHTML = html;
+    const optDiv = document.getElementById('drawerViewOpts');
+    if(optDiv) optDiv.innerHTML = viewOptionsHtml();
 
     // event delegation でボタンのクリックを処理
     freqDiv.onclick = freqDiv.ontouchend = (e) => {
@@ -3441,6 +3468,45 @@ function saveTagOrder(){
   mirrorToChromeStorage({ fraidycat_tag_order: tagOrder });
 }
 
+/* ── 表示の設定（左バーの一番下・スマホはメニュー内） ── */
+// ショート動画を除く設定が有効なら、ショート（URLが/shorts/）を除いた投稿を返す
+function visiblePosts(f){
+  const posts = f.posts || [];
+  return hideShorts ? posts.filter(p => !(p.link && p.link.includes('/shorts/'))) : posts;
+}
+// タグの色（タグの並び順で割り当てる。並び替えると色も入れ替わる）
+function tagColorFor(tag){
+  const tags = getSortedTags();
+  const key = tags.join('\u0001');
+  if(tagColorCache.key !== key) tagColorCache = {key, map:new Map(tags.map((t, i) => [t, TAG_COLORS[i % TAG_COLORS.length]]))};
+  return tagColorCache.map.get(tag) || TAG_COLORS[0];
+}
+// チャンネルの色＝最初に登録されているタグの色
+function tagColorOf(f){
+  return (f.tags && f.tags.length) ? tagColorFor(f.tags[0]) : null;
+}
+function viewOptionsHtml(){
+  return `<div class="sb-section">表示の設定</div>
+    <label class="sb-opt"><input type="checkbox" ${hideShorts ? 'checked' : ''} data-click="1" data-action="setViewOption" data-args='["hideShorts","@el"]'>ショート動画を除く</label>
+    <label class="sb-opt"><input type="checkbox" ${tagColorMode ? 'checked' : ''} data-click="1" data-action="setViewOption" data-args='["tagColorMode","@el"]'>タグの色分けを有効</label>
+    ${tagColorMode ? `<div class="sb-opt-note">最初のタグの色で表示中（マークは使えません）</div>` : ''}`;
+}
+function setViewOption(key, el){
+  const on = !!el.checked;
+  if(key === 'hideShorts'){
+    hideShorts = on;
+    try{ localStorage.setItem('fraidycat_hide_shorts', on ? '1' : '0'); }catch(e){}
+  } else if(key === 'tagColorMode'){
+    tagColorMode = on;
+    try{ localStorage.setItem('fraidycat_tag_color', on ? '1' : '0'); }catch(e){}
+    // マークで絞り込んでいた場合は、マークが使えなくなるので「すべて」に戻す
+    if(on && (activeTag === '__favorite__' || String(activeTag).startsWith('__mark_'))) activeTag = 'すべて';
+  }
+  render();
+  const optDiv = document.getElementById('drawerViewOpts');
+  if(optDiv) optDiv.innerHTML = viewOptionsHtml();
+}
+
 function getSortedTags(){
   const allTags = [...new Set(follows.flatMap(f=>f.tags))];
   // tagOrderに含まれるものを先に、残りはアルファベット順
@@ -3485,6 +3551,8 @@ function renderSidebar(){
   // お気に入り・更新外（状態セクション）
   if(favoriteCount > 0 || suspendedCount > 0){
     html += `<div class="sb-section" style="margin-top:0.5rem">状態</div>`;
+    // タグの色分けが有効な間はマークを使わないので、マーク済みの欄をグレーにして押せなくする
+    if(favoriteCount > 0) html += `<div class="${tagColorMode ? 'sb-disabled' : ''}"${tagColorMode ? ' title="タグの色分けが有効なため、マークは使えません"' : ''}>`;
     if(favoriteCount > 0){
       html += `<button class="sb-btn${activeTag==='__favorite__'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['__favorite__'])}">
         <div class="sb-dot" style="background:linear-gradient(135deg,#E00 25%,#07C 25%,#07C 50%,#080 50%,#080 75%,#E6B800 75%)"></div>マーク済み
@@ -3504,6 +3572,7 @@ function renderSidebar(){
       });
       html += `</div>`;
     }
+    if(favoriteCount > 0) html += `</div>`;
     if(suspendedCount > 0){
       html += `<button class="sb-btn${activeTag==='__suspended__'?' active':''}" data-click="1" data-action="setTag" data-args="${dargs(['__suspended__'])}">
         <div class="sb-dot" style="background:#999"></div>更新外
@@ -3531,13 +3600,14 @@ function renderSidebar(){
         draggable="true"
         data-click="1" data-action="setTag" data-args="${dargs([t])}">
         <div class="sb-drag-handle" title="ドラッグして並び替え">⠿</div>
-        ${esc(t)}
+        ${tagColorMode ? `<span class="sb-tag-color" style="background:${tagColorFor(t).border}"></span>` : ''}${esc(t)}
         <span class="sb-count">${cnt}</span>
       </button>`;
     });
     html += `</div>`;
   }
 
+  html += `<div class="sb-divider"></div>` + viewOptionsHtml();
   sb.innerHTML = html;
 
   // ドラッグ&ドロップのイベント設定
@@ -3604,7 +3674,7 @@ function renderTimeline(filtered, mode){
     const c = colorOf(f);
     const bg = isDark() ? c.dark_bg : c.bg;
     const fg = isDark() ? c.dark_fg : c.fg;
-    (f.posts||[]).forEach(p=>{
+    visiblePosts(f).forEach(p=>{
       allPosts.push({...p, follow:f, bg, fg});
     });
   });
@@ -3691,7 +3761,7 @@ function tlCard(p, mode){
         style="width:60px;height:34px;object-fit:cover;border-radius:4px;flex-shrink:0">`
     : '';
 
-  const tlMarkColor = p.follow.markColor && MARK_COLORS[p.follow.markColor] ? MARK_COLORS[p.follow.markColor] : null;
+  const tlMarkColor = tagColorMode ? tagColorOf(p.follow) : p.follow.markColor && MARK_COLORS[p.follow.markColor] ? MARK_COLORS[p.follow.markColor] : null;
   return `<div class="tl-card">
     <div class="tl-avatar" style="background:${p.bg};color:${p.fg};border:2px solid ${tlMarkColor ? tlMarkColor.border : 'transparent'}">
       ${p.follow.iconUrl ? `<img src="${esc(iconSrc(p.follow))}" alt="${esc(p.follow.initials)}" data-error-action="hideSelf" style="width:100%;height:100%;object-fit:cover;border-radius:6px;position:absolute;inset:0">` : ''}
@@ -5510,6 +5580,12 @@ function openNotifications(){
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <h2 style="margin:0">🔔 通知</h2>
         <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="closeNotifications">閉じる</button>
+      </div>
+      <div class="notif-desc">
+        画面右下に出た通知を、あとから確認するための一覧です。<br>
+        今は<b>「SNSリンクの削除を検知」</b>の通知を表示します。登録しているチャンネルのYouTubeのページ（概要欄・説明文）から、
+        以前あったX・Instagram・TikTokのリンクが無くなった時の通知です（30日ごとに確認）。
+        「残す」を押すとそのリンクを手動の設定として残し、「消す」を押すと表示をやめます。チャンネル名を押すと設定パネルが開きます。
       </div>
       <div id="notifBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
     </div>`;
