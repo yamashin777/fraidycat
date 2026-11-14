@@ -1105,6 +1105,18 @@ a.fc-name:hover{color:var(--accent);text-decoration:underline;}
 /* 上部メニューの「🔔 通知」の一覧（openNotifications） */
 .notif-desc{font-size:12px;color:var(--text-muted);line-height:1.7;background:var(--bg);border-radius:var(--radius);padding:8px 12px;margin-bottom:10px}
 .notif-desc b{color:var(--danger)}
+.notif-desc b.rv{color:var(--yamabuki)}
+/* 「🔔 通知」のタブ（久しぶり更新 / SNSリンクの削除） */
+.notif-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:10px}
+.notif-tab{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:none;background:none;cursor:pointer;
+  font-size:13px;font-family:var(--font-ui);color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-1px;
+}
+.notif-tab:hover{color:var(--text)}
+.notif-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
+.notif-tab-count{display:none;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;align-items:center;justify-content:center}
+.notif-rv-ctrl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:8px;flex-wrap:wrap}
+.notif-rv-ctrl input{width:56px;padding:3px 5px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px}
 .notif-empty{padding:28px 0;text-align:center;color:var(--text-faint);font-size:13px}
 .notif-sec{font-size:12px;font-weight:700;color:var(--text-muted);padding:10px 2px 4px}
 .notif-item{display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text);line-height:1.55}

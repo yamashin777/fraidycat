@@ -1496,42 +1496,8 @@ function dismissAllRevivals(){
   renderRevivalPanel();
 }
 
-// 久しぶり更新の履歴モーダル
-function openRevivalHistory(){
-  let m = document.getElementById('revivalHistModal');
-  if(!m){
-    m = document.createElement('div');
-    m.id = 'revivalHistModal';
-    m.className = 'modal-backdrop';
-    m.onclick = (e)=>{ if(e.target===m) m.style.display='none'; };
-    m.innerHTML = `<div class="modal" style="max-width:640px;width:92%;max-height:84vh;display:flex;flex-direction:column">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-        <h2 style="margin:0">🎉 久しぶり更新の履歴</h2>
-        <span id="revivalHistTip" title="${revivalTooltipText()}" style="cursor:help;color:var(--text-faint);font-size:13px;border:1px solid var(--border-strong);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
-        <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted)">
-          <input type="number" id="revivalThresholdInput" min="1" max="365" value="${revivalThresholdDays}" style="width:52px;padding:2px 4px;border:1px solid var(--border-strong);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px" data-change="1" data-action="setRevivalThreshold" data-args='["@value"]'>
-          <span>日以上で「久しぶり」</span>
-        </div>
-        <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="clearRevivalHistory">クリア</button>
-        <button class="btn-cancel" data-click="1" data-action="closeRevivalHistModal">閉じる</button>
-      </div>
-      <div id="revivalHistNew"></div>
-      <div id="revivalHistBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
-    </div>`;
-    document.body.appendChild(m);
-    // 背景クリックで閉じる処理はm.onclickの e.target===m 判定だけで十分
-    // （中の要素をクリックした場合、targetは常にmではないため誤って閉じることはない）。
-    // ここで.modalにstopPropagationを付けると、data-click委任リスナー（document側で
-    // 拾う仕組み）までイベントが届かなくなり、モーダル内の全ボタンが反応しなくなる
-    // 不具合になるため、あえて付けない。
-  }
-  m.style.display = 'flex';
-  renderRevivalHistNew();
-  renderRevivalHistory();
-  // モーダルで内容を見せたので、未確認扱いを解除してバッジを消す
-  // （表示済みのrenderRevivalHistNew()の結果はモーダルを閉じるまでそのまま残る）
-  if(revivals.length) dismissAllRevivals();
-}
+// 久しぶり更新の履歴は「🔔 通知」の「🎉 久しぶり更新」タブに統合した（openNotifications）
+function openRevivalHistory(){ openNotifications('revival'); }
 function renderRevivalHistNew(){
   const container = document.getElementById('revivalHistNew');
   if(!container) return;
@@ -1552,10 +1518,7 @@ function renderRevivalHistNew(){
     <div class="rv-list">${items}</div>
   </div>`;
 }
-function closeRevivalHistModal(){
-  const m = document.getElementById('revivalHistModal');
-  if(m) m.style.display = 'none';
-}
+function closeRevivalHistModal(){ closeNotifications(); }
 function revivalTooltipText(){
   return `新着動画を検知した際、その投稿と直前の投稿の間隔が${revivalThresholdDays}日以上あいていた場合に表示されます`;
 }
@@ -1615,7 +1578,7 @@ function closeRevivalNotice(){
 }
 function openRevivalHistoryFromNotice(){
   revivalNoticeClosed = true;
-  openRevivalHistory();
+  openNotifications('revival');
 }
 function renderRevivalNotice(){
   let box = document.getElementById('revivalNotice');
@@ -1649,23 +1612,13 @@ function renderRevivalNotice(){
     </div>
     <div class="rv-notice-foot">
       ${rest > 0 ? `<span class="rv-notice-more">ほか${rest}件</span>` : ''}
-      <button class="rv-notice-open" data-click="1" data-action="openRevivalHistoryFromNotice">履歴を見る</button>
+      <button class="rv-notice-open" data-click="1" data-action="openRevivalHistoryFromNotice">通知を見る</button>
     </div>`;
 }
 
 function renderRevivalPanel(){
   renderRevivalNotice();
-  const n = revivals.length;
-  for(const id of ['revivalBadge','revivalBadgeMobile']){
-    const el = document.getElementById(id);
-    if(!el) continue;
-    if(n > 0){
-      el.textContent = n > 99 ? '99+' : String(n);
-      el.style.display = 'inline-flex';
-    } else {
-      el.style.display = 'none';
-    }
-  }
+  updateNotifBadge(); // 未確認の「久しぶり」の件数は「🔔 通知」の数字に含める
 }
 
 // ── ログ画面 ──
@@ -5558,8 +5511,12 @@ function notifItems(){
   }
   return items.sort((a, b) => (b.e.at || 0) - (a.e.at || 0));
 }
+function snsUnreadCount(){
+  return notifItems().filter(it => it.open && (it.e.at || 0) > notifSeenAt).length;
+}
 function updateNotifBadge(){
-  const n = notifItems().filter(it => it.open && (it.e.at || 0) > notifSeenAt).length;
+  // 未確認の「久しぶり」＋まだ見ていない「SNSリンクの削除」
+  const n = revivals.length + snsUnreadCount();
   for(const id of ['notifBadge', 'notifBadgeMobile']){
     const el = document.getElementById(id);
     if(!el) continue;
@@ -5569,7 +5526,24 @@ function updateNotifBadge(){
   const m = document.getElementById('notifModal');
   if(m && m.style.display !== 'none') renderNotifList();
 }
-function openNotifications(){
+// 「🔔 通知」のタブ（revival: 久しぶり更新 / sns: SNSリンクの削除）
+let notifTab = 'revival';
+function setNotifTab(tab){
+  notifTab = tab;
+  const m = document.getElementById('notifModal');
+  if(!m) return;
+  m.querySelectorAll('.notif-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  m.querySelector('#notifPaneRevival').style.display = tab === 'revival' ? '' : 'none';
+  m.querySelector('#notifPaneSns').style.display = tab === 'sns' ? '' : 'none';
+}
+function updateNotifTabCounts(rvNew, snsOpen){
+  const set = (id, n) => { const el = document.getElementById(id); if(el){ el.textContent = n; el.style.display = n ? 'inline-flex' : 'none'; } };
+  set('notifTabCountRevival', rvNew);
+  set('notifTabCountSns', snsOpen);
+}
+// tab: 開くタブ。省略時は未確認の通知がある方（両方なら「久しぶり更新」）
+function openNotifications(tab){
+  if(tab !== 'revival' && tab !== 'sns') tab = revivals.length ? 'revival' : snsUnreadCount() ? 'sns' : notifTab;
   let m = document.getElementById('notifModal');
   if(!m){
     m = document.createElement('div');
@@ -5582,20 +5556,50 @@ function openNotifications(){
         <h2 style="margin:0">🔔 通知</h2>
         <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="closeNotifications">閉じる</button>
       </div>
-      <div class="notif-desc">
-        画面右下に出た通知を、あとから確認するための一覧です。<br>
-        今は<b>「SNSリンクの削除を検知」</b>の通知を表示します。登録しているチャンネルのYouTubeのページ（概要欄・説明文）から、
-        以前あったX・Instagram・TikTokのリンクが無くなった時の通知です（30日ごとに確認）。
-        「残す」を押すとそのリンクを手動の設定として残し、「消す」を押すと表示をやめます。チャンネル名を押すと設定パネルが開きます。
+      <div class="notif-tabs">
+        <button class="notif-tab" data-tab="revival" data-click="1" data-action="setNotifTab" data-args='["revival"]'>🎉 久しぶり更新<span class="notif-tab-count" id="notifTabCountRevival"></span></button>
+        <button class="notif-tab" data-tab="sns" data-click="1" data-action="setNotifTab" data-args='["sns"]'>⚠ SNSリンクの削除<span class="notif-tab-count" id="notifTabCountSns"></span></button>
       </div>
-      <div id="notifBody" style="overflow-y:auto;flex:1;border-top:1px solid var(--border)"></div>
+      <div style="overflow-y:auto;flex:1;min-height:0">
+        <div id="notifPaneRevival">
+          <div class="notif-desc">
+            画面右下に出た通知を、あとから確認するための一覧です。<br>
+            <b class="rv">「久しぶり更新」</b>は、新しい動画が出た時に、その前の動画から長い間（下の日数以上）あいていたチャンネルの通知です。
+            チャンネル名を押すと設定パネル、動画のタイトルを押すとその動画が開きます。
+          </div>
+          <div class="notif-rv-ctrl">
+            <input type="number" id="revivalThresholdInput" min="1" max="365" value="${revivalThresholdDays}" data-change="1" data-action="setRevivalThreshold" data-args='["@value"]'>
+            <span>日以上あいたら「久しぶり」</span>
+            <button class="btn-cancel" style="margin-left:auto" data-click="1" data-action="clearRevivalHistory" title="久しぶり更新の履歴をすべて消す">履歴をクリア</button>
+          </div>
+          <div id="revivalHistNew"></div>
+          <div id="revivalHistBody" style="border-top:1px solid var(--border)"></div>
+        </div>
+        <div id="notifPaneSns" style="display:none">
+          <div class="notif-desc">
+            画面右下に出た通知を、あとから確認するための一覧です。<br>
+            <b>「SNSリンクの削除を検知」</b>は、登録しているチャンネルのYouTubeのページ（概要欄・説明文）から、
+            以前あったX・Instagram・TikTokのリンクが無くなった時の通知です（30日ごとに確認）。
+            「残す」を押すとそのリンクを手動の設定として残し、「消す」を押すと表示をやめます。チャンネル名を押すと設定パネルが開きます。
+          </div>
+          <div id="notifBody" style="border-top:1px solid var(--border)"></div>
+        </div>
+      </div>
     </div>`;
     document.body.appendChild(m);
   }
   m.style.display = 'flex';
+  setNotifTab(tab);
   // 未読の印を付けて表示してから既読にする（一覧の「未読」は閉じるまで残る）
   notifListSeenAt = notifSeenAt;
+  const thr = document.getElementById('revivalThresholdInput');
+  if(thr) thr.value = revivalThresholdDays;
+  renderRevivalHistNew(); // 未確認の「久しぶり」は、閉じるまで「新着」として上に残す
+  renderRevivalHistory();
+  updateNotifTabCounts(revivals.length, snsUnreadCount());
   renderNotifList();
+  revivalNoticeClosed = true;
+  if(revivals.length) dismissAllRevivals();
   notifSeenAt = snsRemovedNoticeClosedAt = Date.now();
   try{
     localStorage.setItem('fraidycat_notif_seen', String(notifSeenAt));
