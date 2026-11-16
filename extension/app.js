@@ -1332,6 +1332,18 @@ function renderOrDefer(){
   render();
 }
 
+// 取得を待っている間に、GitHubからの読み込み（起動時・24時間ごと）でチャンネルの一覧
+// （follows）が丸ごと新しいデータに置き換わることがある。そのまま古いデータに取得結果を
+// 書き込むと、画面にも保存にも反映されず、「久しぶり」の通知だけが出て一覧には新しい動画が
+// 出ない（次の取得まで反映されない）状態になっていた。今の一覧にある同じチャンネルに書き込む。
+function liveFollowOf(f){
+  const live = follows.find(x => x.id === f.id);
+  if(!live || live === f) return f;
+  f.loading = false;
+  live.loading = true;
+  return live;
+}
+
 async function doFetch(f){
   f.loading = true;
   activeFetches++;
@@ -1350,6 +1362,7 @@ async function doFetch(f){
     // 動画を1件も取得できていない（登録直後など）チャンネルは、休止中のプロキシも含めて全て試す
     // （取得失敗時もlastFetchedは記録されるため、postsの有無で判定する）
     const raw = await fetchRSSRaw(f.url, {ignoreCooldown: !(f.posts && f.posts.length)});
+    f = liveFollowOf(f);
     const {feedTitle, posts} = parseRSS(raw);
     // 久しぶり更新の検出: 取得前の最新動画リンクを控える
     const prevPosts = f.posts || [];
@@ -1385,6 +1398,7 @@ async function doFetch(f){
       ? {id:f.id, name:f.name, ok:false, proxy:lastUsedProxy, error:`0件のため既存の${prevPosts.length}件を保持`, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice()}
       : {id:f.id, name:f.name, ok:true, proxy:lastUsedProxy, count:posts.length, ms:Date.now()-fetchStartAt, attempts:lastProxyAttempts.slice(), latestPub:(posts[0]&&posts[0].date)?new Date(posts[0].date).getTime():null, subs:f.subscriberCount!=null?f.subscriberCount:null});
   }catch(e){
+    f = liveFollowOf(f);
     f.error = `取得エラー: ${e.message}`;
     f.posts = f.posts || [];
     const shortName = f.name.length > 16 ? f.name.slice(0, 16) + '…' : f.name;
