@@ -392,6 +392,55 @@ if(ghPath === GH_LEGACY_PATH){
   try{ localStorage.setItem('fraidycat_gh_path', ghPath); }catch(e){}
 }
 let ghSyncEnabled = localStorage.getItem('fraidycat_gh_sync') === 'true';
+// 削除したチャンネルのID → 削除した日時。同期データにも入れて全端末で共有する。
+// 保存時に「GitHubにはあるが手元にない」チャンネルを、削除したものでなければ手元に取り込む
+// （mergeFollowsFromRemote）。以前は手元の一覧でそのまま上書きしていたため、しばらく使って
+// いなかった端末（古い一覧のまま）が保存すると、他の端末で登録したチャンネルが消えていた
+// （2026-11-23、Mac-Safariの528件で568件が上書きされ42件が消えた）。
+let deletedIds = {};
+try{ deletedIds = JSON.parse(localStorage.getItem('fraidycat_deleted_ids') || '{}') || {}; }catch(e){ deletedIds = {}; }
+function saveDeletedIds(){
+  try{ localStorage.setItem('fraidycat_deleted_ids', JSON.stringify(deletedIds)); mirrorToChromeStorage({ fraidycat_deleted_ids: deletedIds }); }catch(e){}
+}
+function noteDeleted(ids){
+  const now = Date.now();
+  for(const id of ids) deletedIds[id] = now;
+  saveDeletedIds();
+}
+// 他端末の削除記録を取り込む（新しい日時を残す）。増えたらtrue
+function mergeDeletedIds(remote){
+  if(!remote || typeof remote !== 'object') return false;
+  let c = false;
+  for(const [id, at] of Object.entries(remote)){
+    if(!deletedIds[id] || deletedIds[id] < at){ deletedIds[id] = at; c = true; }
+  }
+  if(c) saveDeletedIds();
+  return c;
+}
+// GitHub側の一覧と手元の一覧を合わせる: 削除記録にあるものは手元から外し、
+// GitHubにしかない（削除記録にない）ものは手元に加える。変わった件数を返す。
+function mergeFollowsFromRemote(remoteFollows, remoteDeleted){
+  mergeDeletedIds(remoteDeleted);
+  let changed = 0;
+  const before = follows.length;
+  follows = follows.filter(f => !deletedIds[f.id]);
+  changed += before - follows.length;
+  const have = new Set(follows.map(f => f.id));
+  for(const r of remoteFollows){
+    if(!r || r.id == null || have.has(r.id) || deletedIds[r.id]) continue;
+    follows.push({
+      ...r,
+      freq: migrateFreq(r.freq),
+      registeredAt: r.registeredAt || r.id,
+      posts: (r.posts || []).map(p => ({...p, date: p.date ? new Date(p.date) : null})).filter(p => !p.date || !isNaN(p.date.getTime())),
+      loading: false,
+      error: r.error || null,
+    });
+    have.add(r.id);
+    changed++;
+  }
+  return changed;
+}
 let ghSha = null; // 最新ファイルのSHA（更新に必要）
 
 // どの端末からの自動コミットか後から見分けられるように、端末ごとにラベルを
@@ -542,7 +591,8 @@ async function loadFromGitHub(){
       mirrorToChromeStorage({ fraidycat_tag_order: tagOrder });
       console.log('tagOrder set to:', tagOrder.length, tagOrder.slice(0,3));
     }
-    follows = followsData.map(f=>({
+    mergeDeletedIds(decoded.deletedIds);
+    follows = followsData.filter(f => !deletedIds[f.id]).map(f=>({
       ...f,
       freq: migrateFreq(f.freq),
       registeredAt: f.registeredAt || f.id || Date.now(),
@@ -667,7 +717,7 @@ async function saveToGitHub(retryCount){
     // 自分の知らない間に他の端末（拡張機能とWeb版のタブなど）が保存していた場合、そのまま
     // 上書きすると相手が自動で集めた情報（SNSリンク・ユーチュラ番号・アイコン・登録者数・
     // 取得した動画）を消してしまう。保存前に相手の版を読み、自動取得の情報だけ新しい方を取り込む。
-    if(knownSha && ghSha && ghSha !== knownSha){
+    if(ghSha && ghSha !== knownSha){
       try{
         const rawRes = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`,
           {headers:{'Authorization':`token ${ghToken}`,'Accept':'application/vnd.github.raw+json'},cache:'no-store'});
@@ -675,7 +725,8 @@ async function saveToGitHub(retryCount){
           const remote = JSON.parse(await rawRes.text());
           const remoteFollows = Array.isArray(remote) ? remote : remote.follows;
           if(Array.isArray(remoteFollows)){
-            const n = mergeAutoFieldsFromRemote(remoteFollows);
+            const added = mergeFollowsFromRemote(remoteFollows, remote.deletedIds);
+            const n = mergeAutoFieldsFromRemote(remoteFollows) + added;
             if(n){ save(false, false); debouncedRender(); }
             addGhSyncLog({type:'merge', ok:true, count:n});
           }
@@ -687,7 +738,7 @@ async function saveToGitHub(retryCount){
       ...f,
       posts:(f.posts||[]).map(p=>({...p,date:p.date instanceof Date?p.date.toISOString():(p.date||null)}))
     }));
-    const jsonStr = JSON.stringify({follows: data, tagOrder: tagOrder, revivalHistory: revivalHistory, revivalThresholdDays: revivalThresholdDays});
+    const jsonStr = JSON.stringify({follows: data, tagOrder: tagOrder, revivalHistory: revivalHistory, revivalThresholdDays: revivalThresholdDays, deletedIds: deletedIds});
     const bytes = new TextEncoder().encode(jsonStr);
     const binStr = Array.from(bytes).map(b=>String.fromCharCode(b)).join('');
     const content = btoa(binStr);
@@ -4132,6 +4183,7 @@ async function addFollow(){
 function delFollow(id){
   if(!confirm('このフォローを削除しますか？')) return;
   follows = follows.filter(f=>f.id!==id);
+  noteDeleted([id]);
   if(expanded===id) expanded=null;
   save();
   render();
@@ -4740,6 +4792,7 @@ function execMerge(){
     dupGroups.flatMap(g => g.map(f => f.id)).filter(id => !keepIds.has(id))
   );
   follows = follows.filter(f => !deleteIds.has(f.id));
+  noteDeleted([...deleteIds]);
   if(expanded && deleteIds.has(expanded)) expanded = null;
   save();
   closeDuplicateModal();
