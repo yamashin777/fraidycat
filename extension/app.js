@@ -370,7 +370,16 @@ let revivalThresholdDays = parseInt(localStorage.getItem('fraidycat_revival_thre
 
 /* ── GitHub同期設定 ── */
 let ghToken = localStorage.getItem('fraidycat_gh_token') || '';
-let ghRepo  = localStorage.getItem('fraidycat_gh_repo')  || 'yamashin777/fraidycat';
+// 同期データの保存先リポジトリ。以前はアプリ本体と同じ公開リポジトリ（yamashin777/fraidycat）に
+// 保存していたため、登録一覧（チャンネル名・タグ・メモ等）を誰でも見られる状態だった（2026-11）。
+// 本人のトークンでしか読めない非公開リポジトリ（fraidycat-data）に移した。
+const GH_PUBLIC_REPO = 'yamashin777/fraidycat';
+const GH_DEFAULT_REPO = 'yamashin777/fraidycat-data';
+let ghRepo  = localStorage.getItem('fraidycat_gh_repo')  || GH_DEFAULT_REPO;
+if(ghRepo === GH_PUBLIC_REPO){
+  ghRepo = GH_DEFAULT_REPO;
+  try{ localStorage.setItem('fraidycat_gh_repo', ghRepo); }catch(e){}
+}
 // 保存先ファイル。以前は data/follows.json だったが、更新されていない古い版のアプリ
 // （端末名の付かない "fraidycat sync <日時>" でコミットするもの）が平日夕方に古い一覧で
 // 上書きし、新しく登録したチャンネルが消える問題が起きたため（2026-10-13/14）、
@@ -745,7 +754,7 @@ function openGhSettingsModal(){
       <div class="form-row">
         <label class="form-label">リポジトリ（ユーザー名/リポジトリ名）</label>
         <input class="form-input" id="gh-repo" type="text"
-          value="${esc(ghRepo)}" placeholder="yamashin777/fraidycat">
+          value="${esc(ghRepo)}" placeholder="yamashin777/fraidycat-data">
       </div>
       <div class="form-row">
         <label class="form-label">保存先パス</label>
