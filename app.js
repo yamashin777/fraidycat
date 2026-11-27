@@ -5541,7 +5541,8 @@ function findAllSnsHubUrls(text){
    ただし説明欄には、ゲスト・コラボ相手・スポンサー等、他人のSNSも書かれる。そこで:
    ・最近の動画（最大5本）の半分以上・2本以上に毎回出てくるアカウントが1つだけ → 本人のものとして自動で使う
    ・他のSNSで見つかったユーザー名と同じもの → 本人のものとして自動で使う
-   ・毎回出てくるものが複数ある、または動画が1〜2本しか無く決められない → 「🔔 通知」で人に選んでもらう
+   ・説明欄のある動画が1〜2本しか無くても、その種類のアカウントが1つだけ → それを使う
+   ・本人のものらしい候補が複数あって決められない時だけ → 「🔔 通知」で人に選んでもらう
    ・たまに1回出てくるだけのもの（ゲスト等）→ 使わない（聞きもしない）
    lit.link等のまとめページも同じ基準で本人のものを決め、拡張機能がたどる（resolveSnsFromAbout）。
    動画一覧（posts）から毎回同じ結果が出るので、各端末で計算する。人が選んだ結果は snsManual
@@ -5571,7 +5572,12 @@ function snsFromVideos(f){
     const strong = strongOf(cnt[k]);
     if(strong.length === 1) found[k] = strong[0].url;
     else if(strong.length > 1) ask[k] = strong.map(e => e.url);
-    else if(n <= 2) ask[k] = [...cnt[k].values()].map(e => e.url);
+    else if(n <= 2){
+      // 説明欄のある動画が少なくても、その種類のアカウントが1つしか無ければそれを使う
+      // （候補が1つなのに人に聞くのは確認の手間が増えるだけなので。聞くのは複数あって選ぶ必要がある時だけ）
+      const all = [...cnt[k].values()].map(e => e.url);
+      if(all.length === 1) found[k] = all[0]; else ask[k] = all;
+    }
   }
   // 迷ったものでも、本人のものと分かっている他のSNSと同じユーザー名が1つだけあれば、それを使う
   const known = new Set([...Object.values(found), ...Object.values(snsAutoProfileOf(f))].map(snsHandleOf));
