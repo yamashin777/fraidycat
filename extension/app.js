@@ -676,7 +676,16 @@ function mergeAutoFieldsFromRemote(remoteList){
     const r = rm.get(f.id);
     if(!r) continue;
     let c = false;
-    if(newer(r.snsCheckedAt, f.snsCheckedAt)){ f.snsAbout = r.snsAbout; f.snsCheckedAt = r.snsCheckedAt; f.snsCheckVer = r.snsCheckVer; c = true; }
+    if(newer(r.snsCheckedAt, f.snsCheckedAt)){ f.snsAbout = r.snsAbout; f.snsCheckedAt = r.snsCheckedAt; f.snsCheckVer = r.snsCheckVer; f.snsHubChecked = r.snsHubChecked; c = true; }
+    // 「🔔 通知」で「どれでもない」を選んだSNSの候補（どちらかの端末で選んだものは両方残す）
+    if(r.snsAskDismissed){
+      const d = {...(f.snsAskDismissed || {})};
+      for(const [k, list] of Object.entries(r.snsAskDismissed)){
+        const u = [...new Set([...(d[k] || []), ...(list || [])])];
+        if(u.length !== (d[k] || []).length){ d[k] = u; c = true; }
+      }
+      f.snsAskDismissed = d;
+    }
     if(newer(r.iconCheckedAt, f.iconCheckedAt)){
       if(!f.iconManual && r.iconUrl) f.iconUrl = r.iconUrl;
       f.iconCheckedAt = r.iconCheckedAt;
@@ -1434,6 +1443,8 @@ async function doFetch(f){
     // 既存のposts一覧を保持し、取得時刻・エラー状態のみ更新する。
     const emptyButHadPosts = posts.length === 0 && prevPosts.length > 0;
     if(!emptyButHadPosts) f.posts = posts;
+    // 最新動画の説明欄に書かれた本人のSNSを拾う（snsFromVideos）
+    updateSnsFromVideos(f);
     f.lastFetched = Date.now();
     f.error = null;
     if(hadError){
@@ -4813,7 +4824,7 @@ function exportJSON(){
       subscriberCount: f.subscriberCount, subscriberFetchedAt: f.subscriberFetchedAt,
       iconUrl: f.iconUrl,
       // 自動で集めた情報（無くても次回自動で取り直されるが、バックアップとして含める）
-      yuturaId: f.yuturaId, snsAbout: f.snsAbout, snsDesc: f.snsDesc, snsManual: f.snsManual, snsRemoved: f.snsRemoved,
+      yuturaId: f.yuturaId, snsAbout: f.snsAbout, snsDesc: f.snsDesc, snsManual: f.snsManual, snsRemoved: f.snsRemoved, snsAskDismissed: f.snsAskDismissed,
     }))
   };
   const json = JSON.stringify(data, null, 2);
@@ -5463,34 +5474,187 @@ function classifySnsUrl(raw){
   // 最後のURLを使う（以前はユーザー名の代わりに「https:」が入った壊れたリンクになっていた）
   const lastUrl = s.search(/https?:\/\/(?!.*https?:\/\/)/i);
   if(lastUrl > 0) s = s.slice(lastUrl);
+  // 説明文に紛れ込む見えない文字（ゼロ幅スペース等）を除く
+  s = s.replace(/[​-‏⁠﻿]/g, '');
   if(!/^https?:\/\//i.test(s)) s = 'https://' + s;
   let u;
   try{ u = new URL(s); }catch(e){ return null; }
   const host = u.hostname.toLowerCase().replace(/^(www|m|mobile)\./, '');
-  const first = u.pathname.split('/').filter(Boolean)[0] || '';
+  let first = u.pathname.split('/').filter(Boolean)[0] || '';
   if(!first || /^https?:$/i.test(first)) return null;
+  // ユーザー名に使えない文字を含むものは認識しない（以前は壊れたリンクのまま保存されていた）
   if(host === 'x.com' || host === 'twitter.com'){
     if(/^(intent|share|hashtag|search|home|i|messages|settings)$/i.test(first)) return null;
+    if(!/^[A-Za-z0-9_]{1,15}$/.test(first)) return null;
     return ['x', `https://x.com/${first}`];
   }
   if(host === 'instagram.com'){
     if(/^(p|reel|reels|explore|stories|tv)$/i.test(first)) return null;
+    first = first.replace(/\.+$/, ''); // 文末の「.」
+    if(!/^[A-Za-z0-9_.]{1,30}$/.test(first)) return null;
     return ['instagram', `https://www.instagram.com/${first}/`];
   }
   if(host === 'tiktok.com'){
-    if(!first.startsWith('@')) return null;
+    if(!/^@[A-Za-z0-9_.]{1,24}$/.test(first)) return null;
     return ['tiktok', `https://www.tiktok.com/${first}`];
   }
   return null;
 }
-function extractSnsFromText(text){
-  const out = {};
-  const re = /(?:https?:\/\/)?(?:www\.|m\.|mobile\.)?(?:x|twitter|instagram|tiktok)\.com\/[^\s"'<>（）()【】「」、。]+/gi;
+// 文章中のSNSのURLをすべて拾う（[種類, URL] の配列、重複なし）。
+// ・「forex.com/…」の「x.com」のように、別のドメインの一部に一致したものは拾わない
+// ・「instagram.com/abc...」のように途中で省略されたURLは、ユーザー名が欠けているので拾わない
+function extractAllSnsFromText(text){
+  const out = [];
+  const seen = new Set();
+  const re = /(?<![\w.-])(?:https?:\/\/)?(?:www\.|m\.|mobile\.)?(?:x|twitter|instagram|tiktok)\.com\/[^\s"'<>（）()【】「」、。]+/gi;
   for(const m of String(text || '').matchAll(re)){
+    if(/(\.\.\.|…)$/.test(m[0])) continue;
     const c = classifySnsUrl(m[0]);
-    if(c && !out[c[0]]) out[c[0]] = c[1];
+    if(!c || SNS_HUB_OWN_ACCOUNTS.has(c[1])) continue;
+    const key = c[1].toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
   }
   return out;
+}
+function extractSnsFromText(text){
+  const out = {};
+  for(const [k, url] of extractAllSnsFromText(text)) if(!out[k]) out[k] = url;
+  return out;
+}
+// lit.link等のまとめページのURLをすべて拾う（重複なし）
+function findAllSnsHubUrls(text){
+  const re = /(?<![\w.-])(?:https?:\/\/)?(?:www\.)?(?:lit\.link|linktr\.ee|potofu\.me|profu\.link|bio\.link|linkbio\.co)\/[^\s"'<>（）()【】「」、。?#]+/gi;
+  const out = [];
+  for(const m of String(text || '').matchAll(re)){
+    if(/(\.\.\.|…)$/.test(m[0])) continue;
+    const u = (/^https?:\/\//i.test(m[0]) ? m[0] : 'https://' + m[0]).replace(/^http:\/\//i, 'https://');
+    if(!out.includes(u)) out.push(u);
+  }
+  return out;
+}
+
+/* ── 最新動画の説明欄からSNSを探す ──
+   チャンネルの概要・説明文にSNSが載っていなくても、毎回の動画の説明欄に
+   「X: x.com/○○」のように自分のSNSを書いているチャンネルは多い（例: ゆずひこちゃんねる）。
+   ただし説明欄には、ゲスト・コラボ相手・スポンサー等、他人のSNSも書かれる。そこで:
+   ・最近の動画（最大5本）の半分以上・2本以上に毎回出てくるアカウントが1つだけ → 本人のものとして自動で使う
+   ・他のSNSで見つかったユーザー名と同じもの → 本人のものとして自動で使う
+   ・毎回出てくるものが複数ある、または動画が1〜2本しか無く決められない → 「🔔 通知」で人に選んでもらう
+   ・たまに1回出てくるだけのもの（ゲスト等）→ 使わない（聞きもしない）
+   lit.link等のまとめページも同じ基準で本人のものを決め、拡張機能がたどる（resolveSnsFromAbout）。
+   動画一覧（posts）から毎回同じ結果が出るので、各端末で計算する。人が選んだ結果は snsManual
+   （手動の設定）に、「どれでもない」は snsAskDismissed に入れて同期する。 */
+const SNS_VIDEO_POSTS = 5;
+const snsHandleOf = url => String(url || '').replace(/\/+$/, '').split('/').pop().replace(/^@/, '').toLowerCase();
+function snsFromVideos(f){
+  const posts = (f.posts || []).filter(p => p && p.description).slice(0, SNS_VIDEO_POSTS);
+  const n = posts.length;
+  const found = {}, ask = {};
+  let hub = null;
+  if(!n) return {found, ask, hub};
+  const cnt = {x: new Map(), instagram: new Map(), tiktok: new Map()};
+  const hubCnt = new Map();
+  for(const p of posts){
+    for(const [k, url] of extractAllSnsFromText(p.description)){
+      const key = url.toLowerCase();
+      const e = cnt[k].get(key) || {url, c: 0};
+      e.c++;
+      cnt[k].set(key, e);
+    }
+    for(const h of findAllSnsHubUrls(p.description)) hubCnt.set(h, (hubCnt.get(h) || 0) + 1);
+  }
+  const strongOf = m => [...m.values()].filter(e => e.c >= 2 && e.c >= n / 2);
+  for(const k of ['x', 'instagram', 'tiktok']){
+    if(!cnt[k].size) continue;
+    const strong = strongOf(cnt[k]);
+    if(strong.length === 1) found[k] = strong[0].url;
+    else if(strong.length > 1) ask[k] = strong.map(e => e.url);
+    else if(n <= 2) ask[k] = [...cnt[k].values()].map(e => e.url);
+  }
+  // 迷ったものでも、本人のものと分かっている他のSNSと同じユーザー名が1つだけあれば、それを使う
+  const known = new Set([...Object.values(found), ...Object.values(snsAutoProfileOf(f))].map(snsHandleOf));
+  for(const k of Object.keys(ask)){
+    const m = ask[k].filter(u => known.has(snsHandleOf(u)));
+    if(m.length === 1){ found[k] = m[0]; delete ask[k]; }
+  }
+  const hubs = [...hubCnt.entries()].filter(([, c]) => c >= 2 && c >= n / 2);
+  if(hubs.length === 1) hub = hubs[0][0];
+  else if(n === 1 && hubCnt.size === 1) hub = [...hubCnt.keys()][0];
+  return {found, ask, hub};
+}
+// 動画の説明欄から見つけたSNSを反映する。変わったらtrue
+function updateSnsFromVideos(f){
+  const {found, ask, hub} = snsFromVideos(f);
+  const before = JSON.stringify([f.snsVideo, f.snsAsk, f.snsHubVideo]);
+  // 一度見つかったものは、説明欄に書かれなくなった動画が続いても消さない（新しく見つかったもので上書き）
+  const video = {...(f.snsVideo || {}), ...found};
+  for(const k of Object.keys(ask)) if(video[k] && !found[k] && ask[k].some(u => u.toLowerCase() === video[k].toLowerCase())) delete ask[k];
+  if(Object.keys(video).length) f.snsVideo = video; else delete f.snsVideo;
+  // 聞く必要があるのは、チャンネルの概要・説明文や動画で決まらず、手動でも決めていない種類だけ
+  const profile = snsAutoProfileOf(f);
+  const manual = f.snsManual || {};
+  const dismissed = f.snsAskDismissed || {};
+  const asks = {};
+  for(const [k, urls] of Object.entries(ask)){
+    if(profile[k] || video[k] || (k in manual)) continue;
+    const rest = urls.filter(u => !(dismissed[k] || []).includes(u.toLowerCase()));
+    if(rest.length) asks[k] = rest;
+  }
+  if(Object.keys(asks).length) f.snsAsk = asks; else delete f.snsAsk;
+  if(hub) f.snsHubVideo = hub; else if(!f.snsHubVideo) delete f.snsHubVideo;
+  return JSON.stringify([f.snsVideo, f.snsAsk, f.snsHubVideo]) !== before;
+}
+// 手動で入れたSNSのうち、壊れているもの（例: 「instagram.com/https:/」）を取り除く。変わったらtrue
+function repairSnsManual(f){
+  if(!f.snsManual) return false;
+  let c = false;
+  for(const [k, v] of Object.entries(f.snsManual)){
+    if(!v) continue;
+    const cl = classifySnsUrl(v);
+    if(!cl || cl[0] !== k){ delete f.snsManual[k]; c = true; }
+  }
+  if(c && !Object.keys(f.snsManual).length) delete f.snsManual;
+  return c;
+}
+function updateAllSnsFromVideos(){
+  let changed = 0;
+  for(const f of follows){
+    const r = repairSnsManual(f);
+    if(updateSnsFromVideos(f) || r) changed++;
+  }
+  if(changed){ save(true, false); debouncedRender(); }
+  return changed;
+}
+// 「🔔 通知」で候補から選んだ：手動の設定として使う
+function pickSnsAsk(id, key, url){
+  const f = follows.find(x => x.id === id);
+  if(!f) return;
+  markLocalEdit();
+  f.snsManual = {...(f.snsManual || {}), [key]: url};
+  updateSnsFromVideos(f);
+  save();
+  render();
+  showToast(`${SNS_ICONS[key].label}を設定しました`, 2500);
+}
+// 「どれでもない」：今の候補はもう聞かない（別のアカウントが出てきたらまた聞く）
+function dismissSnsAsk(id, key){
+  const f = follows.find(x => x.id === id);
+  if(!f || !f.snsAsk || !f.snsAsk[key]) return;
+  markLocalEdit();
+  const d = {...(f.snsAskDismissed || {})};
+  d[key] = [...new Set([...(d[key] || []), ...f.snsAsk[key].map(u => u.toLowerCase())])];
+  f.snsAskDismissed = d;
+  updateSnsFromVideos(f);
+  save();
+  render();
+  showToast(`${SNS_ICONS[key].label}は設定しないでおきます`, 2500);
+}
+function snsAskItems(){
+  const items = [];
+  for(const f of follows) for(const k of ['x', 'instagram', 'tiktok']) if(f.snsAsk && f.snsAsk[k]) items.push({f, k, urls: f.snsAsk[k]});
+  return items;
 }
 // lit.link・Linktree等の「リンクまとめページ」のURLを探す（無ければnull）
 function findSnsHubUrl(text){
@@ -5504,9 +5668,13 @@ const SNS_HUB_OWN_ACCOUNTS = new Set([
   'https://x.com/litlink_jp', 'https://www.instagram.com/litlink_jp/', 'https://www.tiktok.com/@litlink_jp',
   'https://x.com/linktree_', 'https://www.instagram.com/linktree_/', 'https://www.tiktok.com/@linktree',
 ]);
-// 自動で見つかったSNS（説明文＋概要ページのリンク欄）
-function snsAutoOf(f){
+// チャンネル自身（説明文＋概要ページのリンク欄）に載っているSNS
+function snsAutoProfileOf(f){
   return {...(f.snsDesc || {}), ...(f.snsAbout || {})};
+}
+// 自動で見つかったSNS（動画の説明欄＋チャンネルの説明文＋概要ページのリンク欄。後ろほど優先）
+function snsAutoOf(f){
+  return {...(f.snsVideo || {}), ...snsAutoProfileOf(f)};
 }
 // YouTubeから消えたSNSリンク（「削除」の印が付いていて、まだ「残す」「消す」を選んでいないもの）。
 // 手動で設定したSNSは手動の値が優先されるので対象外
@@ -5597,7 +5765,8 @@ function snsUnreadCount(){
 }
 function updateNotifBadge(){
   // 未確認の「久しぶり」＋まだ見ていない「SNSリンクの削除」
-  const n = revivals.length + snsUnreadCount();
+  // ＋最新動画の説明欄のSNSで、どれが本人のものか選んでほしいもの（選ぶまで出し続ける）
+  const n = revivals.length + snsUnreadCount() + snsAskItems().length;
   for(const id of ['notifBadge', 'notifBadgeMobile']){
     const el = document.getElementById(id);
     if(!el) continue;
@@ -5624,7 +5793,7 @@ function updateNotifTabCounts(rvNew, snsOpen){
 }
 // tab: 開くタブ。省略時は未確認の通知がある方（両方なら「久しぶり更新」）
 function openNotifications(tab){
-  if(tab !== 'revival' && tab !== 'sns') tab = revivals.length ? 'revival' : snsUnreadCount() ? 'sns' : notifTab;
+  if(tab !== 'revival' && tab !== 'sns') tab = revivals.length ? 'revival' : (snsUnreadCount() || snsAskItems().length) ? 'sns' : notifTab;
   let m = document.getElementById('notifModal');
   if(!m){
     m = document.createElement('div');
@@ -5639,7 +5808,7 @@ function openNotifications(tab){
       </div>
       <div class="notif-tabs">
         <button class="notif-tab" data-tab="revival" data-click="1" data-action="setNotifTab" data-args='["revival"]'>🎉 久しぶり更新<span class="notif-tab-count" id="notifTabCountRevival"></span></button>
-        <button class="notif-tab" data-tab="sns" data-click="1" data-action="setNotifTab" data-args='["sns"]'>⚠ SNSリンクの削除<span class="notif-tab-count" id="notifTabCountSns"></span></button>
+        <button class="notif-tab" data-tab="sns" data-click="1" data-action="setNotifTab" data-args='["sns"]'>⚠ SNS<span class="notif-tab-count" id="notifTabCountSns"></span></button>
       </div>
       <div style="overflow-y:auto;flex:1;min-height:0">
         <div id="notifPaneRevival">
@@ -5661,8 +5830,10 @@ function openNotifications(tab){
             画面右下に出た通知を、あとから確認するための一覧です。<br>
             <b>「SNSリンクの削除を検知」</b>は、登録しているチャンネルのYouTubeのページ（概要欄・説明文）から、
             以前あったX・Instagram・TikTokのリンクが無くなった時の通知です（30日ごとに確認）。
-            「残す」を押すとそのリンクを手動の設定として残し、「消す」を押すと表示をやめます。チャンネル名を押すと設定パネルが開きます。
+            「残す」を押すとそのリンクを手動の設定として残し、「消す」を押すと表示をやめます。チャンネル名を押すと設定パネルが開きます。<br>
+            <b>「どれが本人のSNS？」</b>は、最新動画の説明欄に複数のアカウントが載っていて、どれがチャンネル本人のものか自動で決められなかった時の確認です。
           </div>
+          <div id="snsAskBody"></div>
           <div id="notifBody" style="border-top:1px solid var(--border)"></div>
         </div>
       </div>
@@ -5677,7 +5848,7 @@ function openNotifications(tab){
   if(thr) thr.value = revivalThresholdDays;
   renderRevivalHistNew(); // 未確認の「久しぶり」は、閉じるまで「新着」として上に残す
   renderRevivalHistory();
-  updateNotifTabCounts(revivals.length, snsUnreadCount());
+  updateNotifTabCounts(revivals.length, snsUnreadCount() + snsAskItems().length);
   renderNotifList();
   revivalNoticeClosed = true;
   if(revivals.length) dismissAllRevivals();
@@ -5697,7 +5868,29 @@ function openFollowFromNotif(id){
   closeNotifications();
   openFollowPanel(id);
 }
+function renderSnsAskList(){
+  const box = document.getElementById('snsAskBody');
+  if(!box) return;
+  const asks = snsAskItems();
+  if(!asks.length){ box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="notif-sec">どれが本人のSNS？（${asks.length}件）</div>` + asks.map(it => `
+    <div class="notif-item">
+      <span class="notif-date">確認</span>
+      <div class="notif-text">
+        <div><span class="rv-name" data-click="1" data-action="openFollowFromNotif" data-args="[${it.f.id}]" title="このチャンネルの設定パネルを開く">${esc(it.f.name)}</span> の${SNS_ICONS[it.k].label}はどれですか？</div>
+        <div style="font-size:12px;color:var(--text-faint)">最新動画の説明欄に${it.urls.length > 1 ? '複数のアカウントが載っていました' : '載っていましたが、動画が少なく本人のものか決められませんでした'}（リンクを押すと開いて確かめられます）</div>
+        ${it.urls.map(u => `<div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <a class="notif-url" href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>
+          <button class="fc-copy-btn" data-click="1" data-action="pickSnsAsk" data-args="${dargs([it.f.id, it.k, u])}" title="このアカウントをこのチャンネルの${SNS_ICONS[it.k].label}にする">これ</button>
+        </div>`).join('')}
+      </div>
+      <div class="notif-actions">
+        <button class="fc-copy-btn" data-click="1" data-action="dismissSnsAsk" data-args="${dargs([it.f.id, it.k])}" title="どれも本人のものではない（設定しない）">どれでもない</button>
+      </div>
+    </div>`).join('');
+}
 function renderNotifList(){
+  renderSnsAskList();
   const body = document.getElementById('notifBody');
   if(!body) return;
   const items = notifItems();
@@ -5909,7 +6102,8 @@ async function resolveSnsFromAbout(f){
     }
     // リンク欄（または説明文）にlit.link等のリンクまとめページがあれば、そこからも探して
     // 足りないSNSを補う（例: Moe /月一海外旅行 → lit.link/realmoepyon にInstagram・TikTok）
-    hub = hub || f.snsHubDesc || null;
+    // 無ければ、最新動画の説明欄に毎回載っているまとめページ（snsFromVideos）をたどる
+    hub = hub || f.snsHubDesc || f.snsHubVideo || null;
     const missing = ['x', 'instagram', 'tiktok'].filter(k => !about[k] && !(f.snsDesc || {})[k]);
     if(hub && missing.length){
       try{
@@ -5928,6 +6122,7 @@ async function resolveSnsFromAbout(f){
     if(before) noteSnsRemovals(f, before);
     f.snsCheckedAt = Date.now();
     f.snsCheckVer = SNS_CHECK_VER;
+    f.snsHubChecked = f.snsHubVideo || null;
     return true;
   }catch(e){
     console.warn('SNSリンクの取得に失敗:', f.name, e.message);
@@ -5941,7 +6136,9 @@ function scheduleSnsResolve(delay){
     snsTimer = null;
     const now = Date.now();
     const f = follows.find(x => ytChannelIdFromUrl(x.url || '')
-      && !(x.snsCheckedAt && x.snsCheckVer === SNS_CHECK_VER && now - x.snsCheckedAt < SNS_RETRY_MS));
+      && (!(x.snsCheckedAt && x.snsCheckVer === SNS_CHECK_VER && now - x.snsCheckedAt < SNS_RETRY_MS)
+        // 動画の説明欄で新しくまとめページが見つかったチャンネルは、30日を待たずにたどる
+        || (x.snsHubVideo && x.snsHubVideo !== x.snsHubChecked)));
     if(!f){
       if(snsUnsaved){ snsUnsaved = 0; save(true, false); debouncedRender(); }
       return;
@@ -5956,6 +6153,10 @@ function scheduleSnsResolve(delay){
 // 起動直後のRSS取得・ユーチュラ番号の解決と重ならないよう少し遅らせて開始し、新規追加分のため定期的に再開する
 scheduleSnsResolve(60000);
 setInterval(()=>scheduleSnsResolve(0), 10*60*1000);
+// 動画の説明欄からのSNSは、起動時と10分ごとに全チャンネル分を見直す（他端末やバックグラウンドで
+// 取得した動画一覧も反映するため。手元の計算だけなので軽い）
+setTimeout(updateAllSnsFromVideos, 3000);
+setInterval(updateAllSnsFromVideos, 10*60*1000);
 
 /* ── 拡張機能版のバージョン表示 ──
    画面右下のバージョン（v2026.0815.xx）の横に、今ブラウザで実際に動いている
