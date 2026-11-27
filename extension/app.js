@@ -5458,12 +5458,17 @@ setInterval(()=>scheduleYuturaResolve(0), 10*60*1000);
 function classifySnsUrl(raw){
   let s = String(raw || '').trim();
   if(!s) return null;
+  // 同じURLを2回貼り付けた（欄に残っていた文字の後ろに貼った）場合など、
+  // 「https://www.instagram.com/https://www.instagram.com/○○」のようにURLが重なっていたら
+  // 最後のURLを使う（以前はユーザー名の代わりに「https:」が入った壊れたリンクになっていた）
+  const lastUrl = s.search(/https?:\/\/(?!.*https?:\/\/)/i);
+  if(lastUrl > 0) s = s.slice(lastUrl);
   if(!/^https?:\/\//i.test(s)) s = 'https://' + s;
   let u;
   try{ u = new URL(s); }catch(e){ return null; }
   const host = u.hostname.toLowerCase().replace(/^(www|m|mobile)\./, '');
   const first = u.pathname.split('/').filter(Boolean)[0] || '';
-  if(!first) return null;
+  if(!first || /^https?:$/i.test(first)) return null;
   if(host === 'x.com' || host === 'twitter.com'){
     if(/^(intent|share|hashtag|search|home|i|messages|settings)$/i.test(first)) return null;
     return ['x', `https://x.com/${first}`];
